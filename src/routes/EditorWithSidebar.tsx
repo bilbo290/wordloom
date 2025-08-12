@@ -1,14 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { streamText } from 'ai'
 import { MonacoEditor } from '@/components/editor/MonacoEditor'
-import { SelectionToolbar } from '@/components/editor/SelectionToolbar'
 import { Sidebar } from '@/components/Sidebar'
 import { ContextTabs } from '@/components/ContextTabs'
 import { ProjectSettingsModal } from '@/components/ProjectSettingsModal'
 import { SplitPane } from '@/components/SplitPane'
 import { AIPreviewPane } from '@/components/AIPreviewPane'
+import { ContextPreview } from '@/components/ContextPreview'
 import { useToast } from '@/components/ui/use-toast'
-import { createAIProvider, getModel, buildEnhancedPrompt, buildDocumentLevelPrompt, type AIProvider } from '@/lib/ai'
+import { 
+  createAIProvider, 
+  getModel, 
+  buildDocumentLevelPrompt, 
+  buildEnhancedPrompt,
+  buildSmartDocumentLevelPrompt,
+  type AIProvider 
+} from '@/lib/ai'
 import {
   loadSession,
   saveSession,
@@ -18,27 +25,44 @@ import {
   updateDocumentContext,
   ensureDocumentContext
 } from '@/lib/session'
-import { SessionState, ProjectContext, DocumentContext, AIMode } from '@/lib/types'
+import { SessionState, ProjectContext, DocumentContext, AIMode, SmartContextResult } from '@/lib/types'
 
-const CONTEXT_CHARS = 800
+// CONTEXT_CHARS removed since helper functions no longer need it
 
 export function EditorWithSidebar() {
   const [session, setSession] = useState<SessionState | null>(null)
   const [sessionContext, setSessionContext] = useState('')
   const [selectedLines, setSelectedLines] = useState({ start: -1, end: -1 })
-  const [mode, setMode] = useState<AIMode>('revise')
-  const [temperature, setTemperature] = useState(0.7)
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
-  const [aiProvider, setAiProvider] = useState<AIProvider>('ollama')
-  const [customPrompt, setCustomPrompt] = useState('')
   const [promptHistory, setPromptHistory] = useState<string[]>([])
   const [favoritePrompts, setFavoritePrompts] = useState<string[]>([])
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
   const [lastAICallTime, setLastAICallTime] = useState(0)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
+  const [aiProvider, setAIProvider] = useState<AIProvider>('ollama')
+  const [selectedModel, setSelectedModel] = useState<string>('')
+  const [lastAIRequest, setLastAIRequest] = useState<{
+    type: 'selection' | 'document'
+    mode: string
+    customPrompt?: string
+    selectedText?: string
+    selectedLines?: { start: number; end: number }
+  } | null>(null)
+  
+  // Smart context management state
+  const [useSmartContext, setUseSmartContext] = useState(true)
+  const [lastContextInfo, setLastContextInfo] = useState<SmartContextResult | null>(null)
+  const [contextPreviewVisible, setContextPreviewVisible] = useState(false)
+  
   const { toast } = useToast()
+
+  // Derived values
+  const currentFile = session?.activeFileId 
+    ? session.folders.find(f => f.id === session.activeFolderId)?.files.find(f => f.id === session.activeFileId)
+    : null
+  const content = currentFile?.content || ''
 
   // Load session and prompt data on mount
   useEffect(() => {
@@ -56,6 +80,21 @@ export function EditorWithSidebar() {
         const savedFavorites = localStorage.getItem('wordloom-favorite-prompts')
         if (savedFavorites) {
           setFavoritePrompts(JSON.parse(savedFavorites))
+        }
+
+        // Load AI provider preference
+        const savedProvider = localStorage.getItem('wordloom-ai-provider') as AIProvider
+        if (savedProvider && (savedProvider === 'ollama' || savedProvider === 'lmstudio')) {
+          setAIProvider(savedProvider)
+        }
+
+        // Load selected model preference
+        const savedModel = localStorage.getItem('wordloom-selected-model')
+        if (savedModel) {
+          setSelectedModel(savedModel)
+        } else {
+          // Set default model based on provider
+          setSelectedModel(savedProvider === 'ollama' ? 'llama3.2' : 'lmstudio')
         }
       } catch (error) {
         console.error('Failed to load session:', error)
@@ -83,6 +122,41 @@ export function EditorWithSidebar() {
     }
   }, [favoritePrompts])
 
+  // Save AI provider preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('wordloom-ai-provider', aiProvider)
+  }, [aiProvider])
+
+  // Save selected model preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('wordloom-selected-model', selectedModel)
+  }, [selectedModel])
+
+  // Update model when provider changes
+  useEffect(() => {
+    if (aiProvider === 'ollama' && !selectedModel.includes(':') && selectedModel !== 'llama3.2' && selectedModel !== 'llama3.1' && selectedModel !== 'gemma2' && selectedModel !== 'mistral' && selectedModel !== 'codellama') {
+      setSelectedModel('llama3.2')
+    } else if (aiProvider === 'lmstudio' && selectedModel !== 'lmstudio' && selectedModel !== 'custom') {
+      setSelectedModel('lmstudio')
+    }
+  }, [aiProvider, selectedModel])
+
+  // Listen for provider changes from Settings page
+  useEffect(() => {
+    const checkProviderChange = () => {
+      const currentProvider = localStorage.getItem('wordloom-ai-provider') as AIProvider
+      if (currentProvider && currentProvider !== aiProvider) {
+        setAIProvider(currentProvider)
+        // Update model to default for the new provider
+        setSelectedModel(currentProvider === 'ollama' ? 'llama3.2' : 'lmstudio')
+      }
+    }
+    
+    // Check every 500ms
+    const interval = setInterval(checkProviderChange, 500)
+    return () => clearInterval(interval)
+  }, [aiProvider])
+
   // Auto-save session
   useEffect(() => {
     if (!session) return
@@ -96,17 +170,6 @@ export function EditorWithSidebar() {
     }, 500)
     return () => clearTimeout(timeout)
   }, [session])
-
-  // Get current file content
-  const getCurrentFile = useCallback(() => {
-    if (!session || !session.activeFileId || !session.activeFolderId) return null
-    const folder = session.folders.find(f => f.id === session.activeFolderId)
-    if (!folder) return null
-    return folder.files.find(f => f.id === session.activeFileId)
-  }, [session])
-
-  const currentFile = getCurrentFile()
-  const content = currentFile?.content || ''
 
   const updateFileContent = (newContent: string) => {
     setSession(prev => {
@@ -266,6 +329,7 @@ export function EditorWithSidebar() {
     }
   }, [session?.activeFileId])
 
+  // Helper functions for context extraction
   const getSelectedText = useCallback(() => {
     if (selectedLines.start === -1) return ''
     const lines = content.split('\n')
@@ -274,23 +338,133 @@ export function EditorWithSidebar() {
 
   const getContext = useCallback(() => {
     if (selectedLines.start === -1) return { left: '', right: '' }
-
+    
+    const CONTEXT_CHARS = 800
     const lines = content.split('\n')
     const beforeLines = lines.slice(0, selectedLines.start)
     const afterLines = lines.slice(selectedLines.end + 1)
-
+    
+    // Get left context (up to CONTEXT_CHARS)
     let leftContext = beforeLines.join('\n')
     if (leftContext.length > CONTEXT_CHARS) {
       leftContext = '...' + leftContext.slice(-CONTEXT_CHARS)
     }
-
+    
+    // Get right context (up to CONTEXT_CHARS)
     let rightContext = afterLines.join('\n')
     if (rightContext.length > CONTEXT_CHARS) {
       rightContext = rightContext.slice(0, CONTEXT_CHARS) + '...'
     }
-
+    
     return { left: leftContext, right: rightContext }
   }, [content, selectedLines])
+
+  // Handler for selection-based AI requests (Continue Story, Revise, Append, Custom)
+  const handleSelectionAI = useCallback(async (mode: 'continue' | 'revise' | 'append' | 'custom', customDirection?: string) => {
+    const selectedText = getSelectedText()
+    if (!selectedText.trim()) {
+      toast({
+        title: 'No selection',
+        description: 'Please select some text first',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Prevent double-clicks - minimum 1 second between calls
+    const now = Date.now()
+    if (now - lastAICallTime < 1000) {
+      toast({
+        title: 'Please wait',
+        description: 'AI request already in progress',
+        variant: 'default'
+      })
+      return
+    }
+    setLastAICallTime(now)
+
+    if (!session) return
+
+    // Save this request for regeneration
+    setLastAIRequest({
+      type: 'selection',
+      mode,
+      selectedText,
+      selectedLines,
+      customPrompt: customDirection
+    })
+
+    // Create new AbortController for this request
+    const controller = new AbortController()
+    setAbortController(controller)
+
+    setIsStreaming(true)
+    setPreviewContent('')
+    setIsPreviewVisible(true)
+
+    try {
+      const documentContext = session.activeFileId
+        ? session.documentContexts[session.activeFileId]
+        : undefined
+
+      const { left, right } = getContext()
+      
+      // For custom mode, use the custom direction as the prompt
+      const aiMode = mode === 'custom' ? 'custom' : mode
+      const customPrompt = mode === 'custom' && customDirection 
+        ? `Revise the SELECTED passage with this direction: ${customDirection}. Output the revised passage ONLY.`
+        : undefined
+      
+      const { systemMessage, userPrompt } = buildEnhancedPrompt(
+        session.projectContext,
+        documentContext,
+        sessionContext,
+        left,
+        selectedText,
+        right,
+        aiMode,
+        customPrompt
+      )
+
+      const provider = createAIProvider(aiProvider)
+      const model = selectedModel || getModel(aiProvider)
+
+      const { textStream } = await streamText({
+        model: provider.chat(model),
+        temperature: 0.7,
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userPrompt }
+        ],
+        abortSignal: controller.signal
+      })
+
+      let accumulated = ''
+      for await (const chunk of textStream) {
+        accumulated += chunk
+        setPreviewContent(accumulated)
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('AI request aborted')
+      } else {
+        console.error('AI streaming error:', error)
+        toast({
+          title: 'AI Error',
+          description: 'Failed to generate content. Check your AI provider connection.',
+          variant: 'destructive'
+        })
+      }
+    } finally {
+      setIsStreaming(false)
+      setAbortController(null)
+    }
+  }, [getSelectedText, toast, lastAICallTime, session, sessionContext, getContext, aiProvider, selectedModel, setIsStreaming, setAbortController, setPreviewContent, setIsPreviewVisible])
+
+  const handleContinueStory = useCallback(() => handleSelectionAI('continue'), [handleSelectionAI])
+  const handleReviseSelection = useCallback(() => handleSelectionAI('revise'), [handleSelectionAI])
+  const handleAppendToSelection = useCallback(() => handleSelectionAI('append'), [handleSelectionAI])
+  const handleCustomRevision = useCallback((direction: string) => handleSelectionAI('custom', direction), [handleSelectionAI])
 
   const handleStopAI = () => {
     if (abortController) {
@@ -305,157 +479,43 @@ export function EditorWithSidebar() {
     }
   }
 
-  const handleRunAI = async () => {
-    // Prevent double-clicks - minimum 1 second between calls
-    const now = Date.now()
-    if (now - lastAICallTime < 1000) {
-      toast({
-        title: 'Please wait',
-        description: 'AI request already in progress',
-        variant: 'default'
-      })
-      return
-    }
-    setLastAICallTime(now)
 
-    const selectedText = getSelectedText()
-
-    // Check if selection is required for this mode
-    const requiresSelection = !['ideas'].includes(mode)
-
-    if (requiresSelection && !selectedText) {
-      toast({
-        title: 'No selection',
-        description: 'Please select some text first',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    if (!session) return
-
-    // Create new AbortController for this request
-    const controller = new AbortController()
-    setAbortController(controller)
-
-    setIsStreaming(true)
-    setPreviewContent('')
-    // Don't show preview immediately - wait for first content chunk
-
-    try {
-      const documentContext = session.activeFileId
-        ? session.documentContexts[session.activeFileId]
-        : undefined
-
-      let systemMessage: string
-      let userPrompt: string
-
-      if (requiresSelection && selectedText) {
-        // Selection-based AI request
-        const { left, right } = getContext()
-        const result = buildEnhancedPrompt(
-          session.projectContext,
-          documentContext,
-          sessionContext,
-          left,
-          selectedText,
-          right,
-          mode,
-          mode === 'custom' ? customPrompt : undefined
-        )
-        systemMessage = result.systemMessage
-        userPrompt = result.userPrompt
-      } else {
-        // Document-level AI request
-        const result = buildDocumentLevelPrompt(
-          session.projectContext,
-          documentContext,
-          sessionContext,
-          content,
-          mode,
-          mode === 'custom' ? customPrompt : undefined
-        )
-        systemMessage = result.systemMessage
-        userPrompt = result.userPrompt
-      }
-
-      // Add to prompt history if using custom prompt
-      if (mode === 'custom' && customPrompt.trim()) {
-        setPromptHistory(prev => {
-          const newHistory = [customPrompt.trim(), ...prev.filter(p => p !== customPrompt.trim())]
-          return newHistory.slice(0, 10) // Keep last 10 prompts
-        })
-      }
-
-      const provider = createAIProvider(aiProvider)
-      const model = getModel(aiProvider)
-
-      const { textStream } = await streamText({
-        model: provider.chat(model),
-        temperature,
-        messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: userPrompt }
-        ],
-        abortSignal: controller.signal
-      })
-
-      let accumulated = ''
-      let isFirstChunk = true
-      for await (const chunk of textStream) {
-        accumulated += chunk
-        setPreviewContent(accumulated)
-        
-        // Show preview pane on first chunk
-        if (isFirstChunk) {
-          setIsPreviewVisible(true)
-          isFirstChunk = false
-        }
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Request was aborted, don't show error
-        console.log('AI request aborted')
-      } else {
-        console.error('AI streaming error:', error)
-        toast({
-          title: 'AI Error',
-          description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
-          variant: 'destructive'
-        })
-      }
-    } finally {
-      setIsStreaming(false)
-      setAbortController(null)
-    }
-  }
+  // This function is now replaced by handleRunDocumentAI which is called from the right panel
 
   const handleInsertPreview = () => {
     if (!previewContent) return
 
     const lines = content.split('\n')
 
-    if (mode === 'revise') {
-      const newLines = [
-        ...lines.slice(0, selectedLines.start),
-        ...previewContent.split('\n'),
-        ...lines.slice(selectedLines.end + 1)
-      ]
-      updateFileContent(newLines.join('\n'))
-    } else {
-      const newLines = [
-        ...lines.slice(0, selectedLines.end + 1),
-        ...previewContent.split('\n'),
-        ...lines.slice(selectedLines.end + 1)
-      ]
-      updateFileContent(newLines.join('\n'))
-    }
+    // Default to append behavior since mode is no longer tracked here
+    const newLines = [
+      ...lines.slice(0, selectedLines.end + 1),
+      ...previewContent.split('\n'),
+      ...lines.slice(selectedLines.end + 1)
+    ]
+    updateFileContent(newLines.join('\n'))
 
     setPreviewContent('')
     setSelectedLines({ start: -1, end: -1 })
     toast({
       title: 'Applied',
-      description: mode === 'revise' ? 'Text revised' : 'Text appended'
+      description: 'Content applied'
+    })
+  }
+
+  const handleAppendPreview = () => {
+    if (!previewContent) return
+
+    // Append to the end of the document
+    const currentContent = content.trim()
+    const newContent = currentContent + '\n\n' + previewContent
+    updateFileContent(newContent)
+
+    setPreviewContent('')
+    setSelectedLines({ start: -1, end: -1 })
+    toast({
+      title: 'Content Appended',
+      description: 'AI content added to the end of document'
     })
   }
 
@@ -475,15 +535,18 @@ export function EditorWithSidebar() {
 
     if (!session) return
 
+    // Save this request for regeneration
+    setLastAIRequest({
+      type: 'document',
+      mode: aiMode,
+      customPrompt: customPromptText
+    })
+
     // Create new AbortController for this request
     const controller = new AbortController()
     setAbortController(controller)
 
-    // Set the mode and custom prompt, then run AI
-    setMode(aiMode)
-    if (customPromptText) {
-      setCustomPrompt(customPromptText)
-    }
+    // Mode and custom prompt are passed directly from the right panel
 
     // Clear selection for document-level requests
     setSelectedLines({ start: -1, end: -1 })
@@ -497,14 +560,38 @@ export function EditorWithSidebar() {
         ? session.documentContexts[session.activeFileId]
         : undefined
 
-      const { systemMessage, userPrompt } = buildDocumentLevelPrompt(
-        session.projectContext,
-        documentContext,
-        sessionContext,
-        content,
-        aiMode,
-        customPromptText
-      )
+      let systemMessage: string
+      let userPrompt: string
+      let contextInfo: SmartContextResult | undefined
+
+      if (useSmartContext) {
+        // Use smart context management
+        const result = await buildSmartDocumentLevelPrompt(
+          session.projectContext,
+          documentContext,
+          sessionContext,
+          content,
+          aiMode,
+          customPromptText
+        )
+        systemMessage = result.systemMessage
+        userPrompt = result.userPrompt
+        contextInfo = result.contextInfo
+        setLastContextInfo(contextInfo)
+      } else {
+        // Use traditional context management
+        const result = buildDocumentLevelPrompt(
+          session.projectContext,
+          documentContext,
+          sessionContext,
+          content,
+          aiMode,
+          customPromptText
+        )
+        systemMessage = result.systemMessage
+        userPrompt = result.userPrompt
+        setLastContextInfo(null)
+      }
 
       // Add to prompt history if using custom prompt
       if (customPromptText?.trim()) {
@@ -515,11 +602,11 @@ export function EditorWithSidebar() {
       }
 
       const provider = createAIProvider(aiProvider)
-      const model = getModel(aiProvider)
+      const model = selectedModel || getModel(aiProvider)
 
       const { textStream } = await streamText({
         model: provider.chat(model),
-        temperature,
+        temperature: 0.7, // Default temperature since toolbar is removed
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: userPrompt }
@@ -547,7 +634,7 @@ export function EditorWithSidebar() {
         console.error('AI streaming error:', error)
         toast({
           title: 'AI Error',
-          description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
+          description: 'Failed to generate content. Is Ollama running?',
           variant: 'destructive'
         })
       }
@@ -556,6 +643,36 @@ export function EditorWithSidebar() {
       setAbortController(null)
     }
   }
+
+  const handleRegenerateContent = useCallback(() => {
+    if (!lastAIRequest) {
+      toast({
+        title: 'Nothing to regenerate',
+        description: 'No previous AI request found',
+        variant: 'default'
+      })
+      return
+    }
+
+    if (lastAIRequest.type === 'selection') {
+      // For selection-based requests, restore the selection and call the selection handler
+      if (lastAIRequest.selectedLines) {
+        setSelectedLines(lastAIRequest.selectedLines)
+      }
+      
+      if (lastAIRequest.mode === 'custom' && lastAIRequest.customPrompt) {
+        // Extract the custom direction from the saved prompt
+        const match = lastAIRequest.customPrompt.match(/Revise the SELECTED passage with this direction: (.+)\. Output/)
+        const direction = match ? match[1] : lastAIRequest.customPrompt
+        handleSelectionAI('custom', direction)
+      } else {
+        handleSelectionAI(lastAIRequest.mode as 'continue' | 'revise' | 'append')
+      }
+    } else {
+      // For document-level requests, call the document handler
+      handleRunDocumentAI(lastAIRequest.mode as any, lastAIRequest.customPrompt)
+    }
+  }, [lastAIRequest, handleSelectionAI, handleRunDocumentAI, toast])
 
   const handleAddToFavorites = (prompt: string) => {
     const trimmedPrompt = prompt.trim()
@@ -584,14 +701,11 @@ export function EditorWithSidebar() {
   }
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault()
-      handleRunAI()
-    } else if (e.key === 'Escape' && isStreaming) {
+    if (e.key === 'Escape' && isStreaming) {
       e.preventDefault()
       handleStopAI()
     }
-  }, [handleRunAI, handleStopAI, isStreaming])
+  }, [handleStopAI, isStreaming])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -623,7 +737,7 @@ export function EditorWithSidebar() {
 
   return (
     <div className="h-screen flex flex-col">
-      <div className={`flex-1 flex min-h-0 ${(selectedLines.start !== -1 || mode === 'ideas') ? 'pb-32' : ''}`}>
+      <div className="flex-1 flex min-h-0">
         {/* Sidebar */}
         <Sidebar
           folders={session.folders}
@@ -676,6 +790,26 @@ export function EditorWithSidebar() {
                       <span className="px-2 py-1 bg-accent/20 rounded-md">
                         {content.split('\n').length} lines
                       </span>
+                      <button
+                        onClick={() => setUseSmartContext(!useSmartContext)}
+                        className={`px-2 py-1 rounded-md transition-colors ${
+                          useSmartContext 
+                            ? 'bg-green-500/20 text-green-600 border border-green-500/30' 
+                            : 'bg-red-500/20 text-red-600 border border-red-500/30'
+                        }`}
+                        title={useSmartContext ? 'Smart Context: Enabled' : 'Smart Context: Disabled'}
+                      >
+                        {useSmartContext ? '🧠 Smart' : '📝 Classic'}
+                      </button>
+                      {lastContextInfo && (
+                        <button
+                          onClick={() => setContextPreviewVisible(!contextPreviewVisible)}
+                          className="px-2 py-1 bg-blue-500/20 text-blue-600 border border-blue-500/30 rounded-md transition-colors"
+                          title="Toggle Context Preview"
+                        >
+                          👁️ Context ({lastContextInfo.totalTokens} tokens)
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -686,6 +820,13 @@ export function EditorWithSidebar() {
                   onChange={updateFileContent}
                   selectedLines={selectedLines}
                   onSelectionChange={setSelectedLines}
+                  documentContext={sessionContext}
+                  aiProvider={aiProvider}
+                  selectedModel={selectedModel}
+                  onContinueStory={handleContinueStory}
+                  onReviseSelection={handleReviseSelection}
+                  onAppendToSelection={handleAppendToSelection}
+                  onCustomRevision={handleCustomRevision}
                 />
               </div>
             </div>
@@ -698,13 +839,15 @@ export function EditorWithSidebar() {
               onClearPreview={() => setPreviewContent('')}
               onClose={() => setIsPreviewVisible(false)}
               onStopGeneration={handleStopAI}
+              onRegenerateContent={handleRegenerateContent}
+              onAppendContent={handleAppendPreview}
               isVisible={isPreviewVisible}
             />
           </SplitPane>
         </div>
 
         {/* Right panel - Simplified ContextTabs */}
-        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in min-h-0">
+        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in min-h-0 flex flex-col">
           <ContextTabs
             projectContext={session.projectContext}
             onProjectSettingsClick={() => setIsProjectSettingsOpen(true)}
@@ -720,29 +863,24 @@ export function EditorWithSidebar() {
             onAddToFavorites={handleAddToFavorites}
             onRemoveFromFavorites={handleRemoveFromFavorites}
             documentContent={content}
+            aiProvider={aiProvider}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
+          
+          {/* Context Preview */}
+          {contextPreviewVisible && lastContextInfo && (
+            <div className="p-4 border-t">
+              <ContextPreview
+                contextInfo={lastContextInfo}
+                totalPromptTokens={lastContextInfo.totalTokens + 100} // Rough estimate with system message
+                className="w-full"
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Selection toolbar - fixed position at bottom */}
-      {(selectedLines.start !== -1 || mode === 'ideas') && (
-        <div className="fixed bottom-2 left-2 right-2 border border-border/30 rounded-lg bg-background/95 backdrop-blur-sm shadow-lg z-50">
-          <SelectionToolbar
-            mode={mode}
-            temperature={temperature}
-            aiProvider={aiProvider}
-            customPrompt={customPrompt}
-            onModeChange={setMode}
-            onTemperatureChange={setTemperature}
-            onAIProviderChange={setAiProvider}
-            onCustomPromptChange={setCustomPrompt}
-            onRunAI={handleRunAI}
-            onStopAI={handleStopAI}
-            hasSelection={selectedLines.start !== -1}
-            isStreaming={isStreaming}
-          />
-        </div>
-      )}
 
       {/* Project Settings Modal */}
       <ProjectSettingsModal

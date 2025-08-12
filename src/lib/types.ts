@@ -81,3 +81,68 @@ export interface AIAssistantState {
   promptHistory: string[]
   favoriteTemplates: string[] // template IDs
 }
+
+// Smart Context Management Types
+export interface DocumentSummary {
+  fileId: string
+  version: string // content hash to track changes
+  structural: string // headers, sections, outline
+  content: string // main themes, key points, style
+  entities: string // characters, concepts, key terms
+  contentType: ContentType
+  tokenCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SemanticChunk {
+  id: string
+  fileId: string
+  content: string
+  startPosition: number
+  endPosition: number
+  tokenCount: number
+  embedding?: number[] // for semantic similarity
+  chunkType: 'paragraph' | 'section' | 'dialogue' | 'code' | 'list'
+}
+
+export interface ContextConfig {
+  maxTokens: number // total token budget for context
+  immediateContextRatio: number // ratio of budget for immediate context
+  summaryRatio: number // ratio of budget for summary
+  semanticRatio: number // ratio of budget for semantic chunks
+  adaptiveWindowSize: boolean // whether to adapt context window based on document size
+}
+
+export interface SmartContextResult {
+  projectContext: string
+  documentContext: string
+  sessionContext: string
+  documentSummary: string
+  immediateContext: {
+    before: string
+    after: string
+    tokens: number
+  }
+  semanticChunks: string[]
+  totalTokens: number
+  strategy: 'short-doc' | 'medium-doc' | 'long-doc'
+  contentType: ContentType
+}
+
+export type ContentType = 
+  | 'fiction' 
+  | 'non-fiction' 
+  | 'technical' 
+  | 'blog' 
+  | 'academic' 
+  | 'business' 
+  | 'notes' 
+  | 'other'
+
+export interface ContextCacheEntry {
+  key: string
+  summary: DocumentSummary
+  chunks: SemanticChunk[]
+  timestamp: number
+}

@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { ProjectContext, DocumentContext, AIMode, PromptTemplate } from './types'
+import { ProjectContext, DocumentContext, AIMode, PromptTemplate, SmartContextResult } from './types'
+import { getSmartContextManager } from './smart-context'
 import { 
   RefreshCw, 
   Plus, 
@@ -49,6 +50,61 @@ export const MODEL = getModel('ollama')
 export const SYSTEM_MESSAGE = `You are a precise writing/editor assistant for any document (blogs, docs, notes, fiction).
 Respect the author's style, POV, tense, and constraints.
 Output ONLY the prose requested — no explanations.`
+
+// Ollama model interface
+export interface OllamaModel {
+  name: string
+  model: string
+  modified_at: string
+  size: number
+  digest: string
+  details: {
+    parameter_size: string
+    quantization_level: string
+  }
+}
+
+// Fetch available Ollama models
+export async function fetchOllamaModels(): Promise<OllamaModel[]> {
+  try {
+    const isDev = import.meta.env.DEV
+    const baseURL = isDev 
+      ? '/ollama'  // Use proxy in development
+      : import.meta.env.VITE_OLLAMA_BASE_URL?.replace('/v1', '') || 'http://127.0.0.1:11434'
+    
+    const response = await fetch(`${baseURL}/api/tags`)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    return data.models || []
+  } catch (error) {
+    console.error('Failed to fetch Ollama models:', error)
+    throw error
+  }
+}
+
+// Get model display name and size info
+export function getModelDisplayInfo(model: OllamaModel) {
+  const name = model.name || model.model
+  const sizeGB = (model.size / (1024 * 1024 * 1024)).toFixed(1)
+  const parameterSize = model.details?.parameter_size || 'Unknown'
+  
+  // Extract base model name and variant
+  const [baseName, variant] = name.split(':')
+  const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1)
+  
+  return {
+    name,
+    displayName,
+    variant: variant || 'latest',
+    sizeGB: `${sizeGB}GB`,
+    parameterSize,
+    fullSize: model.size
+  }
+}
 
 // Helper functions for building context sections
 function buildProjectInstructions(projectContext: ProjectContext): string {
@@ -160,6 +216,60 @@ export function buildEnhancedPrompt(
   return { systemMessage, userPrompt }
 }
 
+// New smart prompt building for selection-based tasks
+export async function buildSmartEnhancedPrompt(
+  projectContext: ProjectContext,
+  documentContext: DocumentContext | undefined,
+  sessionContext: string,
+  fullContent: string,
+  selectedText: string,
+  selectionStart: number,
+  selectionEnd: number,
+  mode: AIMode,
+  customPrompt?: string
+): Promise<{ systemMessage: string; userPrompt: string; contextInfo: SmartContextResult }> {
+  
+  // Get smart context
+  const contextManager = getSmartContextManager()
+  const smartContext = await contextManager.buildSmartContext(
+    projectContext,
+    documentContext,
+    sessionContext,
+    fullContent,
+    selectedText,
+    selectionStart,
+    selectionEnd
+  )
+
+  // Build enhanced system message
+  const baseSystem = projectContext.systemPrompt || SYSTEM_MESSAGE
+  const projectInstructions = buildProjectInstructions(projectContext)
+  const systemMessage = projectInstructions 
+    ? `${baseSystem}\n\nPROJECT GUIDELINES:\n${projectInstructions}`
+    : baseSystem
+  
+  // Build user prompt with smart context
+  const sections = [
+    smartContext.projectContext,
+    smartContext.documentContext,
+    smartContext.sessionContext,
+    smartContext.documentSummary,
+    smartContext.immediateContext.before ? `LEFT CONTEXT:\n${smartContext.immediateContext.before}` : '',
+    `SELECTED:\n${selectedText}`,
+    smartContext.immediateContext.after ? `RIGHT CONTEXT:\n${smartContext.immediateContext.after}` : '',
+    ...smartContext.semanticChunks.map(chunk => `RELATED CONTEXT:\n${chunk}`),
+    `TASK:\n${getTaskInstruction(mode, customPrompt)}`
+  ].filter(section => section.trim() !== '')
+  
+  const userPrompt = sections.join('\n\n')
+  
+  return { 
+    systemMessage, 
+    userPrompt,
+    contextInfo: smartContext
+  }
+}
+
 function getTaskInstruction(mode: AIMode, customPrompt?: string): string {
   if (mode === 'custom' && customPrompt) {
     return customPrompt
@@ -213,6 +323,24 @@ ${taskInstruction}`
 
 // Predefined prompt templates
 export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
+  {
+    id: 'continue-story-document',
+    name: 'Continue Story',
+    description: 'Continue the narrative from where the document ends',
+    mode: 'continue',
+    promptText: 'Continue this story naturally from where it currently ends. Write 150-250 words that advance the plot, develop characters, or enhance the narrative. Maintain consistent voice, POV, and tense.',
+    requiresSelection: false,
+    category: 'writing'
+  },
+  {
+    id: 'continue-story-selection',
+    name: 'Continue Story',
+    description: 'Continue the narrative with natural story progression',
+    mode: 'continue',
+    promptText: 'Continue this story naturally, maintaining the established voice, characters, and plot direction. Add 100-200 words that advance the narrative.',
+    requiresSelection: true,
+    category: 'writing'
+  },
   {
     id: 'brainstorm-ideas',
     name: 'Brainstorm Ideas',
@@ -284,6 +412,15 @@ export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
     promptText: 'Simplify the SELECTED technical content to make it more accessible to a general audience. Use clear explanations, analogies, and examples while maintaining accuracy.',
     requiresSelection: true,
     category: 'editing'
+  },
+  {
+    id: 'custom-revision',
+    name: 'Custom Revision',
+    description: 'Revise selected text with custom direction',
+    mode: 'custom',
+    promptText: '',  // This will be dynamically filled with user's direction
+    requiresSelection: true,
+    category: 'editing'
   }
 ]
 
@@ -316,6 +453,51 @@ export function buildDocumentLevelPrompt(
   const userPrompt = sections.join('\n')
   
   return { systemMessage, userPrompt }
+}
+
+// New smart document-level prompt building
+export async function buildSmartDocumentLevelPrompt(
+  projectContext: ProjectContext,
+  documentContext: DocumentContext | undefined,
+  sessionContext: string,
+  fullDocumentContent: string,
+  mode: AIMode,
+  customPrompt?: string
+): Promise<{ systemMessage: string; userPrompt: string; contextInfo: SmartContextResult }> {
+  
+  // Get smart context (no selection for document-level tasks)
+  const contextManager = getSmartContextManager()
+  const smartContext = await contextManager.buildSmartContext(
+    projectContext,
+    documentContext,
+    sessionContext,
+    fullDocumentContent
+  )
+
+  // Build enhanced system message
+  const baseSystem = projectContext.systemPrompt || SYSTEM_MESSAGE
+  const projectInstructions = buildProjectInstructions(projectContext)
+  const systemMessage = projectInstructions 
+    ? `${baseSystem}\n\nPROJECT GUIDELINES:\n${projectInstructions}`
+    : baseSystem
+  
+  // Build user prompt with smart context (using summary instead of full content)
+  const sections = [
+    smartContext.projectContext,
+    smartContext.documentContext,
+    smartContext.sessionContext,
+    smartContext.documentSummary,
+    ...smartContext.semanticChunks.map(chunk => `DOCUMENT SECTION:\n${chunk}`),
+    `TASK:\n${getTaskInstruction(mode, customPrompt)}`
+  ].filter(section => section.trim() !== '')
+  
+  const userPrompt = sections.join('\n\n')
+  
+  return { 
+    systemMessage, 
+    userPrompt,
+    contextInfo: smartContext
+  }
 }
 
 // Helper function to get mode display info
