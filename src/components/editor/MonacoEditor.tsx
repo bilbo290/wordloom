@@ -45,6 +45,8 @@ export function MonacoEditor({
   const [customDirection, setCustomDirection] = useState('')
   const [showCustomContinue, setShowCustomContinue] = useState(false)
   const [continueDirection, setContinueDirection] = useState('')
+  
+  // Debug state will be logged after hasSelection is defined
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const completionProviderRef = useRef<any>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -425,6 +427,14 @@ export function MonacoEditor({
   }, [onChange])
 
   const hasSelection = selectedLines.start !== -1
+  
+  // Debug state
+  console.log('MonacoEditor state:', { 
+    hasSelection, 
+    showCustomRevision, 
+    showCustomContinue,
+    onContinueStoryWithDirection: !!onContinueStoryWithDirection 
+  })
 
   const handleCustomRevisionClick = () => {
     setShowCustomRevision(true)
@@ -445,6 +455,9 @@ export function MonacoEditor({
   }
 
   const handleCustomContinueClick = () => {
+    console.log('Custom Continue clicked, setting showCustomContinue to true')
+    // Make sure other dialogs are closed
+    setShowCustomRevision(false)
     setShowCustomContinue(true)
     setContinueDirection('')
   }
@@ -613,7 +626,7 @@ export function MonacoEditor({
 
       {/* Custom Continue Input */}
       {hasSelection && showCustomContinue && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg p-4 animate-fade-in w-96">
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-amber-50/95 dark:bg-amber-950/95 backdrop-blur-sm border-2 border-amber-200 dark:border-amber-800 rounded-lg shadow-lg p-4 animate-fade-in w-96 z-50">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-foreground">Continue Story Direction</span>

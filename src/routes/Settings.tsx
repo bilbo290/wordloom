@@ -5,10 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
 import { useToast } from '@/components/ui/use-toast'
 import { createAIProvider, getModel, SYSTEM_MESSAGE, type AIProvider } from '@/lib/ai'
+import { getAutocompleteService, type AutocompleteOptions } from '@/lib/autocomplete'
 import { fileSystemManager, isFileSystemSupported, getDefaultDocumentPath, getOS } from '@/lib/filesystem'
-import { FolderOpen, Download, Upload, HardDrive, Cloud } from 'lucide-react'
+import { FolderOpen, Download, Upload, HardDrive, Cloud, Sparkles, Trash2 } from 'lucide-react'
 
 export function Settings() {
   const [isTesting, setIsTesting] = useState(false)
@@ -17,13 +20,50 @@ export function Settings() {
   const [isImporting, setIsImporting] = useState(false)
   const [currentPath, setCurrentPath] = useState('')
   const [fsSupported, setFsSupported] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('lmstudio')
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('ollama')
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [autocompleteSettings, setAutocompleteSettings] = useState<Partial<AutocompleteOptions>>({
+    enabled: true,
+    triggerDelay: 500,
+    completionLength: 'medium'
+  })
   const { toast } = useToast()
 
   useEffect(() => {
     setFsSupported(isFileSystemSupported())
     setCurrentPath(fileSystemManager.getCurrentPath())
+    
+    // Load saved AI provider
+    const savedProvider = localStorage.getItem('wordloom-ai-provider') as AIProvider
+    if (savedProvider && (savedProvider === 'ollama' || savedProvider === 'lmstudio')) {
+      setSelectedProvider(savedProvider)
+    }
+    
+    // Load autocomplete settings
+    const savedAutocomplete = localStorage.getItem('wordloom-autocomplete-settings')
+    if (savedAutocomplete) {
+      try {
+        const settings = JSON.parse(savedAutocomplete)
+        setAutocompleteSettings(settings)
+        getAutocompleteService(settings)
+      } catch (error) {
+        console.error('Failed to load autocomplete settings:', error)
+      }
+    }
+    
+    setHasLoaded(true)
   }, [])
+
+  // Save AI provider when it changes
+  useEffect(() => {
+    if (!hasLoaded) return // Don't trigger on initial load
+    
+    localStorage.setItem('wordloom-ai-provider', selectedProvider)
+    toast({
+      title: 'AI Provider Updated',
+      description: `Switched to ${selectedProvider === 'ollama' ? 'Ollama' : 'LM Studio'}. Refresh the editor to apply changes.`
+    })
+  }, [selectedProvider, hasLoaded, toast])
 
   const initializeFileSystem = async () => {
     setIsInitializingFS(true)
@@ -97,6 +137,27 @@ export function Settings() {
     } finally {
       setIsImporting(false)
     }
+  }
+
+  const updateAutocompleteSettings = (update: Partial<AutocompleteOptions>) => {
+    const newSettings = { ...autocompleteSettings, ...update }
+    setAutocompleteSettings(newSettings)
+    localStorage.setItem('wordloom-autocomplete-settings', JSON.stringify(newSettings))
+    getAutocompleteService(newSettings)
+    
+    toast({
+      title: 'Autocomplete settings updated',
+      description: 'Your changes have been saved'
+    })
+  }
+
+  const clearAutocompleteCache = () => {
+    const service = getAutocompleteService()
+    service.clearCache()
+    toast({
+      title: 'Cache cleared',
+      description: 'Autocomplete cache has been cleared'
+    })
   }
 
   const testConnection = async () => {
@@ -188,7 +249,8 @@ export function Settings() {
   const { baseUrl, apiKey, model } = getCurrentConfig()
 
   return (
-    <div className="container max-w-4xl mx-auto p-8">
+    <div className="h-full overflow-y-auto">
+      <div className="container max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
       <Card className="mb-8">
@@ -305,6 +367,94 @@ export function Settings() {
               Import/Export requires file system access support
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            AI Autocomplete
+          </CardTitle>
+          <CardDescription>
+            Configure AI-powered inline suggestions while you type
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="autocomplete-enabled">Enable Autocomplete</Label>
+              <p className="text-sm text-muted-foreground">
+                Get AI suggestions as you type (like GitHub Copilot)
+              </p>
+            </div>
+            <Switch
+              id="autocomplete-enabled"
+              checked={autocompleteSettings.enabled}
+              onCheckedChange={(enabled) => updateAutocompleteSettings({ enabled })}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label>Trigger Delay</Label>
+            <p className="text-sm text-muted-foreground mb-2">
+              How long to wait after typing stops before suggesting ({autocompleteSettings.triggerDelay}ms)
+            </p>
+            <Slider
+              value={[autocompleteSettings.triggerDelay || 500]}
+              onValueChange={([value]) => updateAutocompleteSettings({ triggerDelay: value })}
+              min={100}
+              max={2000}
+              step={100}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Fast (100ms)</span>
+              <span>Slow (2000ms)</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Completion Length</Label>
+            <Select 
+              value={autocompleteSettings.completionLength || 'medium'} 
+              onValueChange={(value: 'short' | 'medium' | 'long') => 
+                updateAutocompleteSettings({ completionLength: value })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="short">Short (~10 words)</SelectItem>
+                <SelectItem value="medium">Medium (~20 words)</SelectItem>
+                <SelectItem value="long">Long (~40 words)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label>Keyboard Shortcuts</Label>
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>• <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded">Tab</kbd> - Accept suggestion</p>
+              <p>• <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded">Esc</kbd> - Dismiss suggestion</p>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearAutocompleteCache}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear Autocomplete Cache
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -459,6 +609,7 @@ VITE_OPENAI_MODEL=lmstudio`}
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }

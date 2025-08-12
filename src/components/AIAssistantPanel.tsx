@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,9 +17,10 @@ import {
   Clock,
   Star,
   Edit,
-  Trash2
+  Trash2,
+  RefreshCw
 } from 'lucide-react'
-import { DEFAULT_PROMPT_TEMPLATES } from '@/lib/ai'
+import { DEFAULT_PROMPT_TEMPLATES, type AIProvider, fetchOllamaModels, getModelDisplayInfo, type OllamaModel } from '@/lib/ai'
 import type { PromptTemplate, AIMode } from '@/lib/types'
 
 interface AIAssistantPanelProps {
@@ -31,6 +32,9 @@ interface AIAssistantPanelProps {
   favoritePrompts?: string[]
   onAddToFavorites?: (prompt: string) => void
   onRemoveFromFavorites?: (prompt: string) => void
+  aiProvider?: AIProvider
+  selectedModel?: string
+  onModelChange?: (model: string) => void
 }
 
 export function AIAssistantPanel({
@@ -41,11 +45,41 @@ export function AIAssistantPanel({
   promptHistory,
   favoritePrompts = [],
   onAddToFavorites,
-  onRemoveFromFavorites
+  onRemoveFromFavorites,
+  aiProvider = 'ollama',
+  selectedModel,
+  onModelChange
 }: AIAssistantPanelProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [customPrompt, setCustomPrompt] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  const [availableModels, setAvailableModels] = useState<OllamaModel[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [modelError, setModelError] = useState<string | null>(null)
+
+  // Fetch available Ollama models when provider is ollama
+  useEffect(() => {
+    if (aiProvider === 'ollama') {
+      const fetchModels = async () => {
+        setIsLoadingModels(true)
+        setModelError(null)
+        try {
+          const models = await fetchOllamaModels()
+          setAvailableModels(models)
+        } catch (error) {
+          setModelError('Failed to fetch models. Is Ollama running?')
+          setAvailableModels([])
+        } finally {
+          setIsLoadingModels(false)
+        }
+      }
+      
+      fetchModels()
+    } else {
+      setAvailableModels([])
+      setModelError(null)
+    }
+  }, [aiProvider])
 
   // Filter templates for document-level assistance
   const documentTemplates = DEFAULT_PROMPT_TEMPLATES.filter(template => !template.requiresSelection)
@@ -114,6 +148,130 @@ export function AIAssistantPanel({
           </p>
         </CardHeader>
       </Card>
+
+      {/* Model Selection */}
+      {onModelChange && (
+        <Card className="glass border-border/30 bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center space-x-2">
+              <Brain className="h-4 w-4 text-blue-500" />
+              <span>AI Model</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">
+                Current Model ({aiProvider}):
+              </Label>
+              <Select 
+                value={selectedModel || ''} 
+                onValueChange={(value: string) => onModelChange(value)}
+                disabled={isStreaming || (aiProvider === 'ollama' && isLoadingModels)}
+              >
+                <SelectTrigger className="bg-background/50 border-border/50">
+                  <SelectValue placeholder={
+                    isLoadingModels ? 'Loading models...' : `Select ${aiProvider} model...`
+                  } />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border border-border/50 backdrop-blur-md">
+                  {aiProvider === 'ollama' ? (
+                    <>
+                      {isLoadingModels && (
+                        <div className="flex items-center space-x-2 px-2 py-1.5 text-sm">
+                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                          <span>Loading models...</span>
+                        </div>
+                      )}
+                      {modelError && (
+                        <div className="flex items-center space-x-2 text-red-500 px-2 py-1.5 text-sm">
+                          <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                          <span className="text-xs">{modelError}</span>
+                        </div>
+                      )}
+                      {!isLoadingModels && !modelError && availableModels.map((model) => {
+                        const info = getModelDisplayInfo(model)
+                        return (
+                          <SelectItem key={info.name} value={info.name}>
+                            <div className="flex items-center space-x-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                              <span>{info.displayName}</span>
+                              {info.variant !== 'latest' && (
+                                <Badge variant="secondary" className="ml-1 text-xs">
+                                  {info.variant}
+                                </Badge>
+                              )}
+                              <Badge variant="outline" className="ml-1 text-xs">
+                                {info.sizeGB}
+                              </Badge>
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                      {!isLoadingModels && !modelError && availableModels.length === 0 && (
+                        <div className="flex items-center space-x-2 text-muted-foreground px-2 py-1.5 text-sm">
+                          <span className="text-xs">No models found. Pull models with: ollama pull llama3.2</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <SelectItem value="lmstudio">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                          <span>Default LM Studio Model</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="custom">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 rounded-full bg-gray-500"></div>
+                          <span>Custom Model</span>
+                        </div>
+                      </SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {aiProvider === 'ollama' && availableModels.length > 0 
+                    ? `${availableModels.length} models available`
+                    : 'Select different models for varied capabilities. Change provider in Settings.'
+                  }
+                </p>
+                {aiProvider === 'ollama' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      // Trigger a refresh of models
+                      if (!isLoadingModels) {
+                        const fetchModels = async () => {
+                          setIsLoadingModels(true)
+                          setModelError(null)
+                          try {
+                            const models = await fetchOllamaModels()
+                            setAvailableModels(models)
+                          } catch (error) {
+                            setModelError('Failed to fetch models. Is Ollama running?')
+                            setAvailableModels([])
+                          } finally {
+                            setIsLoadingModels(false)
+                          }
+                        }
+                        fetchModels()
+                      }
+                    }}
+                    disabled={isLoadingModels}
+                    className="h-6 px-2 text-xs"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Document Actions */}
       <Card className="glass border-border/30 bg-card">

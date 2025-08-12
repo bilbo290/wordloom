@@ -7,7 +7,9 @@ import {
   X,
   Eye,
   ArrowRight,
-  Square
+  Square,
+  RefreshCw,
+  Plus
 } from 'lucide-react'
 
 interface AIPreviewPaneProps {
@@ -17,6 +19,8 @@ interface AIPreviewPaneProps {
   onClearPreview: () => void
   onClose: () => void
   onStopGeneration?: () => void
+  onRegenerateContent?: () => void
+  onAppendContent?: () => void
   isVisible: boolean
 }
 
@@ -27,6 +31,8 @@ export function AIPreviewPane({
   onClearPreview,
   onClose,
   onStopGeneration,
+  onRegenerateContent,
+  onAppendContent,
   isVisible
 }: AIPreviewPaneProps) {
   if (!isVisible) return null
@@ -134,20 +140,43 @@ export function AIPreviewPane({
 
             {/* Action buttons */}
             {previewContent && (
-              <div className="flex gap-3 mt-4 pt-4 border-t border-border/20">
+              <div className="flex gap-2 mt-4 pt-4 border-t border-border/20">
                 <Button 
                   onClick={onInsertPreview} 
                   className="flex-1 bg-primary hover:bg-primary/90 text-sm shadow-md"
                   disabled={isStreaming}
                 >
                   <ArrowRight className="h-3 w-3 mr-2" />
-                  Insert into Editor
+                  Insert
                 </Button>
+                {onAppendContent && (
+                  <Button 
+                    variant="outline"
+                    onClick={onAppendContent}
+                    className="hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/20 shadow-sm"
+                    disabled={isStreaming}
+                    title="Append to document"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                )}
+                {onRegenerateContent && (
+                  <Button 
+                    variant="outline"
+                    onClick={onRegenerateContent}
+                    className="hover:bg-blue-500/10 hover:text-blue-600 hover:border-blue-500/20 shadow-sm"
+                    disabled={isStreaming}
+                    title="Regenerate with same prompt"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                )}
                 <Button 
                   variant="outline" 
                   onClick={onClearPreview}
                   className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 shadow-sm"
                   disabled={isStreaming}
+                  title="Clear preview"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { streamText } from 'ai'
 import { BlockEditor } from '@/components/editor/BlockEditor'
-import { SelectionToolbar } from '@/components/editor/SelectionToolbar'
+// SelectionToolbar has been removed - this is legacy code
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -16,11 +16,11 @@ export function Editor() {
   const [content, setContent] = useState('')
   const [documentContext, setDocumentContext] = useState('')
   const [selectedLines, setSelectedLines] = useState({ start: -1, end: -1 })
-  const [mode, setMode] = useState<'revise' | 'append'>('revise')
-  const [temperature, setTemperature] = useState(0.7)
+  const [mode] = useState<'revise' | 'append'>('revise')
+  const [temperature] = useState(0.7)
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
-  const [aiProvider, setAiProvider] = useState<AIProvider>('lmstudio')
+  const [aiProvider] = useState<AIProvider>('lmstudio')
   const { toast } = useToast()
 
   // Load saved content on mount
@@ -225,18 +225,7 @@ export function Editor() {
         </div>
       </div>
 
-      {/* Selection toolbar */}
-      <SelectionToolbar
-        mode={mode}
-        temperature={temperature}
-        aiProvider={aiProvider}
-        onModeChange={setMode}
-        onTemperatureChange={setTemperature}
-        onAIProviderChange={setAiProvider}
-        onRunAI={handleRunAI}
-        hasSelection={selectedLines.start !== -1}
-        isStreaming={isStreaming}
-      />
+      {/* Selection toolbar has been removed - this is legacy code */}
     </div>
   )
 }

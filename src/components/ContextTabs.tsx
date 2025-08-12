@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ProjectContext, DocumentContext } from '@/lib/types'
+import type { AIProvider } from '@/lib/ai'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -37,6 +38,9 @@ interface ContextTabsProps {
   onAddToFavorites?: (prompt: string) => void
   onRemoveFromFavorites?: (prompt: string) => void
   documentContent?: string
+  aiProvider?: AIProvider
+  selectedModel?: string
+  onModelChange?: (model: string) => void
 }
 
 type TabType = 'context' | 'assistant'
@@ -55,7 +59,10 @@ export function ContextTabs({
   favoritePrompts = [],
   onAddToFavorites,
   onRemoveFromFavorites,
-  documentContent = ''
+  documentContent = '',
+  aiProvider,
+  selectedModel,
+  onModelChange
 }: ContextTabsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('context')
 
@@ -222,6 +229,9 @@ export function ContextTabs({
                 favoritePrompts={favoritePrompts}
                 onAddToFavorites={onAddToFavorites}
                 onRemoveFromFavorites={onRemoveFromFavorites}
+                aiProvider={aiProvider}
+                selectedModel={selectedModel}
+                onModelChange={onModelChange}
               />
             )}
           </div>

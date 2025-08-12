@@ -14,6 +14,11 @@ export default defineConfig({
   },
   // Proxy for LM Studio to avoid CORS issues
   server: {
+    hmr: {
+      // Use polling instead of WebSocket for HMR with Bun
+      port: 5174,
+      host: 'localhost'
+    },
     proxy: {
       '/v1': {
         target: 'http://127.0.0.1:1234',
