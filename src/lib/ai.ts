@@ -49,7 +49,8 @@ export const MODEL = getModel('ollama')
 
 export const SYSTEM_MESSAGE = `You are a precise writing/editor assistant for any document (blogs, docs, notes, fiction).
 Respect the author's style, POV, tense, and constraints.
-Output ONLY the prose requested — no explanations.`
+Output ONLY the prose requested — no explanations.
+When asked to continue or write the "next part", write NEW content that comes after the given text. Never repeat or rewrite existing content.`
 
 // Ollama model interface
 export interface OllamaModel {
@@ -281,7 +282,7 @@ function getTaskInstruction(mode: AIMode, customPrompt?: string): string {
     case 'append':
       return 'Continue the SELECTED passage with 80–180 words that flow naturally. Maintain voice, POV, and tense. Output continuation ONLY.'
     case 'continue':
-      return 'Continue the story naturally from the SELECTED passage. Write 100-200 words that advance the plot, develop characters, or enhance the narrative. Maintain consistent voice, POV, and tense. Output continuation ONLY.'
+      return 'Write the NEXT part of the story that comes after the SELECTED passage. Do NOT rewrite or repeat the selected text. Write 100-200 words of new content that advances the plot, develops characters, or enhances the narrative. Maintain consistent voice, POV, and tense. Output only the new continuation.'
     case 'ideas':
       return 'Based on the SELECTED passage, generate 3-5 creative ideas for how the story/content could develop next. Include specific suggestions for plot developments, character arcs, themes, or directions. Be creative but consistent with the established tone and context.'
     case 'summarize':
@@ -328,7 +329,7 @@ export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
     name: 'Continue Story',
     description: 'Continue the narrative from where the document ends',
     mode: 'continue',
-    promptText: 'Continue this story naturally from where it currently ends. Write 150-250 words that advance the plot, develop characters, or enhance the narrative. Maintain consistent voice, POV, and tense.',
+    promptText: 'Write the next part of this story that comes after where it currently ends. Do NOT rewrite existing content. Write 150-250 words of new content that advances the plot, develops characters, or enhances the narrative. Maintain consistent voice, POV, and tense.',
     requiresSelection: false,
     category: 'writing'
   },
@@ -337,7 +338,7 @@ export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
     name: 'Continue Story',
     description: 'Continue the narrative with natural story progression',
     mode: 'continue',
-    promptText: 'Continue this story naturally, maintaining the established voice, characters, and plot direction. Add 100-200 words that advance the narrative.',
+    promptText: 'Write the next part of the story that comes after the selected passage. Do NOT rewrite or repeat the selected text. Write 100-200 words of new content that advances the narrative while maintaining the established voice, characters, and plot direction.',
     requiresSelection: true,
     category: 'writing'
   },
