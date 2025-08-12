@@ -462,6 +462,11 @@ export function EditorWithSidebar() {
   }, [getSelectedText, toast, lastAICallTime, session, sessionContext, getContext, aiProvider, selectedModel, setIsStreaming, setAbortController, setPreviewContent, setIsPreviewVisible])
 
   const handleContinueStory = useCallback(() => handleSelectionAI('continue'), [handleSelectionAI])
+  const handleContinueStoryWithDirection = useCallback((direction: string) => {
+    // Use continue mode but with custom direction
+    const customPrompt = `Continue the story from where the SELECTED passage ends. ${direction}. Write 100-200 words of new content that advances the narrative while incorporating this direction. Maintain consistent voice, POV, and tense. Output only the new continuation.`
+    handleSelectionAI('custom', customPrompt)
+  }, [handleSelectionAI])
   const handleReviseSelection = useCallback(() => handleSelectionAI('revise'), [handleSelectionAI])
   const handleAppendToSelection = useCallback(() => handleSelectionAI('append'), [handleSelectionAI])
   const handleCustomRevision = useCallback((direction: string) => handleSelectionAI('custom', direction), [handleSelectionAI])
@@ -824,6 +829,7 @@ export function EditorWithSidebar() {
                   aiProvider={aiProvider}
                   selectedModel={selectedModel}
                   onContinueStory={handleContinueStory}
+                  onContinueStoryWithDirection={handleContinueStoryWithDirection}
                   onReviseSelection={handleReviseSelection}
                   onAppendToSelection={handleAppendToSelection}
                   onCustomRevision={handleCustomRevision}
