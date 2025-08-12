@@ -101,8 +101,9 @@ File Structure (implemented)
 │  │  ├─ Sidebar.tsx    (file/folder management)
 │  │  ├─ theme-toggle.tsx
 │  │  ├─ editor/
-│  │  │  ├─ BlockEditor.tsx      (main editor with line numbers)
-│  │  │  ├─ LineNumber.tsx       (clickable line numbers)
+│  │  │  ├─ MonacoEditor.tsx    (main editor with Monaco)
+│  │  │  ├─ BlockEditor.tsx      (textarea editor for forms)
+│  │  │  ├─ LineNumber.tsx       (clickable line numbers for BlockEditor)
 │  │  │  ├─ EditorLine.tsx       (deprecated - kept for reference)
 │  │  │  └─ SelectionToolbar.tsx (bottom toolbar)
 │  │  └─ ui/ (shadcn components: button, card, textarea, input, select, badge, separator, dropdown-menu, tooltip, use-toast, etc.)
@@ -261,27 +262,29 @@ Reads choice on init.
 
 ## Block-Based Selection System
 
-**Editor Architecture**: Use textarea with line number overlay for natural text input and visual line selection.
+**Editor Architecture**: 
+- **Main Column**: Use Monaco Editor (@monaco-editor/react) for professional text editing with built-in line numbers, syntax highlighting, and advanced features
+- **Form Inputs**: Use BlockEditor (textarea-based) for smaller text inputs like context forms, session notes, and other UI components
 
-**Line Selection Methods**:
-- **Single click**: Select one line
+**Line Selection Methods** (Monaco Editor):
+- **Single click**: Select one line via line number gutter
 - **Shift+click**: Extend selection to range
 - **Ctrl/Cmd+click**: Toggle line in selection
 - **Cursor position**: Auto-highlight current line
 
 **Visual Feedback**: 
-- Selected lines get `bg-accent/20` background
-- Line numbers show selection state
+- Selected lines get custom decorations with `bg-accent/20` background
+- Line numbers show selection state in gutter
 - Cursor position automatically updates line selection
 
 **Technical Implementation**: 
-- Use textarea for text input (avoid contentEditable cursor issues)
-- Overlay line numbers as clickable elements
-- Sync textarea cursor position with line selection
-- Handle Enter/Backspace for natural line splitting/joining
+- Monaco Editor for main text editing with custom theme integration
+- BlockEditor (textarea) for form inputs and smaller text areas
+- Custom line decorations for selection highlighting
+- Theme synchronization between light/dark modes
 
 Core UX Flow
-User types/pastes into the textarea (with line numbers overlay).
+User types/pastes into the Monaco Editor (main column).
 
 User selects text blocks by clicking line numbers (or natural text selection).
 
@@ -350,6 +353,40 @@ Auto-save each file's content to session storage (debounced).
 - Metadata stored alongside files (.meta.json files)
 - Graceful fallback to localStorage when API unavailable
 - Import/export functionality for session backup/restore
+
+**Scrollbar & UI Responsiveness Patterns**:
+- **Dark Theme Scrollbar Issues**: Default browser scrollbars become invisible in dark themes
+- **Solution Pattern**: Always implement custom scrollbar styling for theme compatibility
+- **Cross-browser Support**: Use both `scrollbar-width: thin` (Firefox) and `-webkit-scrollbar` (Chrome/Safari)
+- **Enhanced Scrollbar Class**:
+```css
+.enhanced-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) hsl(var(--background) / 0.2);
+  scroll-behavior: smooth;
+}
+.enhanced-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+.enhanced-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, hsl(var(--muted-foreground) / 0.4), hsl(var(--muted-foreground) / 0.6));
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+.enhanced-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.6), hsl(var(--primary) / 0.8));
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.3);
+}
+```
+
+**Resizable UI Components**:
+- **Height Constraints**: Avoid `max-height` when implementing resize - use `min-height` with `resize: vertical`
+- **Textarea Resize**: Apply `resizable` class, remove rigid height constraints, maintain `min-height` for usability
+- **Container Resize**: Use `resizable-both` for editors/previews that benefit from width/height adjustment
+- **Custom Resize Handles**: Style `::-webkit-resizer` with gradients to match app aesthetics
+- **Component-Specific Strategy**:
+  - Textareas: `resize: vertical` only
+  - Editor containers: `resize: both` for maximum flexibility  
+  - Preview areas: `resize: both` for content readability
+  - Line-numbered editors: Apply resize to container, not textarea itself
 
 Prompts (use these exact shapes)
 System message:
@@ -686,10 +723,11 @@ REQUIREMENTS
        - Expandable folder tree with files
        - Create/rename/delete operations via context menus
        - Click to switch between files
-     - **Main editor**: Block-based editor (BlockEditor.tsx)
-       - Textarea with line number overlay for natural text input
-       - Clickable line numbers for block selection
+     - **Main editor**: Monaco Editor (MonacoEditor.tsx)
+       - Professional code editor with built-in line numbers
+       - Clickable line number gutter for block selection
        - File breadcrumb showing current folder/file path
+       - Theme synchronization and custom decorations
      - **Bottom toolbar** (SelectionToolbar.tsx):
        - Mode: "Revise Selection" / "Append to Selection"
        - Temperature input (0-2)

@@ -111,7 +111,7 @@ export function DocumentContextForm({ documentContext, onChange }: DocumentConte
           placeholder="File-specific context, notes, or requirements..."
           value={documentContext?.documentNotes || ''}
           onChange={(e) => handleChange('documentNotes', e.target.value)}
-          className="h-16 bg-background/50 backdrop-blur-sm border-border/50 focus:border-primary/50 transition-all duration-300 resize-none text-sm"
+          className="h-20 bg-background/50 backdrop-blur-sm border-border/50 focus:border-primary/50 transition-all duration-300 text-sm enhanced-scrollbar overflow-y-auto resizable"
         />
       </div>
 

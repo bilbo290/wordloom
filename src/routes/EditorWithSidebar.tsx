@@ -1,22 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import { streamText } from 'ai'
-import { BlockEditor } from '@/components/editor/BlockEditor'
+import { MonacoEditor } from '@/components/editor/MonacoEditor'
 import { SelectionToolbar } from '@/components/editor/SelectionToolbar'
 import { Sidebar } from '@/components/Sidebar'
 import { ContextTabs } from '@/components/ContextTabs'
 import { ProjectSettingsModal } from '@/components/ProjectSettingsModal'
 import { useToast } from '@/components/ui/use-toast'
-import { createAIProvider, getModel, buildEnhancedPrompt, type AIProvider } from '@/lib/ai'
-import { 
-  loadSession, 
-  saveSession, 
-  createFolder, 
-  createFile, 
+import { createAIProvider, getModel, buildEnhancedPrompt, buildDocumentLevelPrompt, type AIProvider } from '@/lib/ai'
+import {
+  loadSession,
+  saveSession,
+  createFolder,
+  createFile,
   updateProjectContext,
   updateDocumentContext,
   ensureDocumentContext
 } from '@/lib/session'
-import { SessionState, ProjectContext, DocumentContext } from '@/lib/types'
+import { SessionState, ProjectContext, DocumentContext, AIMode } from '@/lib/types'
 
 const CONTEXT_CHARS = 800
 
@@ -24,20 +24,34 @@ export function EditorWithSidebar() {
   const [session, setSession] = useState<SessionState | null>(null)
   const [sessionContext, setSessionContext] = useState('')
   const [selectedLines, setSelectedLines] = useState({ start: -1, end: -1 })
-  const [mode, setMode] = useState<'revise' | 'append'>('revise')
+  const [mode, setMode] = useState<AIMode>('revise')
   const [temperature, setTemperature] = useState(0.7)
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
   const [aiProvider, setAiProvider] = useState<AIProvider>('lmstudio')
+  const [customPrompt, setCustomPrompt] = useState('')
+  const [promptHistory, setPromptHistory] = useState<string[]>([])
+  const [favoritePrompts, setFavoritePrompts] = useState<string[]>([])
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
   const { toast } = useToast()
 
-  // Load session on mount
+  // Load session and prompt data on mount
   useEffect(() => {
     const initializeSession = async () => {
       try {
         const loadedSession = await loadSession()
         setSession(loadedSession)
+
+        // Load prompt history and favorites from localStorage
+        const savedHistory = localStorage.getItem('wordloom-prompt-history')
+        if (savedHistory) {
+          setPromptHistory(JSON.parse(savedHistory))
+        }
+
+        const savedFavorites = localStorage.getItem('wordloom-favorite-prompts')
+        if (savedFavorites) {
+          setFavoritePrompts(JSON.parse(savedFavorites))
+        }
       } catch (error) {
         console.error('Failed to load session:', error)
         toast({
@@ -50,10 +64,24 @@ export function EditorWithSidebar() {
     initializeSession()
   }, [toast])
 
+  // Save prompt history to localStorage
+  useEffect(() => {
+    if (promptHistory.length > 0) {
+      localStorage.setItem('wordloom-prompt-history', JSON.stringify(promptHistory))
+    }
+  }, [promptHistory])
+
+  // Save favorite prompts to localStorage
+  useEffect(() => {
+    if (favoritePrompts.length > 0) {
+      localStorage.setItem('wordloom-favorite-prompts', JSON.stringify(favoritePrompts))
+    }
+  }, [favoritePrompts])
+
   // Auto-save session
   useEffect(() => {
     if (!session) return
-    
+
     const timeout = setTimeout(async () => {
       try {
         await saveSession(session)
@@ -176,14 +204,14 @@ export function EditorWithSidebar() {
       if (!prev) return null
       const newSession = { ...prev }
       newSession.folders = newSession.folders.filter(f => f.id !== folderId)
-      
+
       // If we deleted the active folder, select another
       if (prev.activeFolderId === folderId && newSession.folders.length > 0) {
         const firstFolder = newSession.folders[0]
         newSession.activeFolderId = firstFolder.id
         newSession.activeFileId = firstFolder.files[0]?.id || null
       }
-      
+
       return newSession
     })
   }
@@ -195,10 +223,10 @@ export function EditorWithSidebar() {
       const folder = newSession.folders.find(f => f.id === folderId)
       if (folder) {
         folder.files = folder.files.filter(f => f.id !== fileId)
-        
+
         // Remove document context for deleted file
         delete newSession.documentContexts[fileId]
-        
+
         // If we deleted the active file, select another
         if (prev.activeFileId === fileId && folder.files.length > 0) {
           newSession.activeFileId = folder.files[0].id
@@ -227,7 +255,7 @@ export function EditorWithSidebar() {
   // Ensure document context exists when switching files
   useEffect(() => {
     if (session?.activeFileId) {
-      setSession(prevSession => 
+      setSession(prevSession =>
         prevSession ? ensureDocumentContext(prevSession, session.activeFileId!) : prevSession
       )
     }
@@ -241,27 +269,31 @@ export function EditorWithSidebar() {
 
   const getContext = useCallback(() => {
     if (selectedLines.start === -1) return { left: '', right: '' }
-    
+
     const lines = content.split('\n')
     const beforeLines = lines.slice(0, selectedLines.start)
     const afterLines = lines.slice(selectedLines.end + 1)
-    
+
     let leftContext = beforeLines.join('\n')
     if (leftContext.length > CONTEXT_CHARS) {
       leftContext = '...' + leftContext.slice(-CONTEXT_CHARS)
     }
-    
+
     let rightContext = afterLines.join('\n')
     if (rightContext.length > CONTEXT_CHARS) {
       rightContext = rightContext.slice(0, CONTEXT_CHARS) + '...'
     }
-    
+
     return { left: leftContext, right: rightContext }
   }, [content, selectedLines])
 
   const handleRunAI = async () => {
     const selectedText = getSelectedText()
-    if (!selectedText || !session) {
+
+    // Check if selection is required for this mode
+    const requiresSelection = !['ideas'].includes(mode)
+
+    if (requiresSelection && !selectedText) {
       toast({
         title: 'No selection',
         description: 'Please select some text first',
@@ -270,28 +302,59 @@ export function EditorWithSidebar() {
       return
     }
 
+    if (!session) return
+
     setIsStreaming(true)
     setPreviewContent('')
-    
+
     try {
-      const { left, right } = getContext()
-      const documentContext = session.activeFileId 
-        ? session.documentContexts[session.activeFileId] 
+      const documentContext = session.activeFileId
+        ? session.documentContexts[session.activeFileId]
         : undefined
-      
-      const { systemMessage, userPrompt } = buildEnhancedPrompt(
-        session.projectContext,
-        documentContext,
-        sessionContext,
-        left,
-        selectedText,
-        right,
-        mode
-      )
+
+      let systemMessage: string
+      let userPrompt: string
+
+      if (requiresSelection && selectedText) {
+        // Selection-based AI request
+        const { left, right } = getContext()
+        const result = buildEnhancedPrompt(
+          session.projectContext,
+          documentContext,
+          sessionContext,
+          left,
+          selectedText,
+          right,
+          mode,
+          mode === 'custom' ? customPrompt : undefined
+        )
+        systemMessage = result.systemMessage
+        userPrompt = result.userPrompt
+      } else {
+        // Document-level AI request
+        const result = buildDocumentLevelPrompt(
+          session.projectContext,
+          documentContext,
+          sessionContext,
+          content,
+          mode,
+          mode === 'custom' ? customPrompt : undefined
+        )
+        systemMessage = result.systemMessage
+        userPrompt = result.userPrompt
+      }
+
+      // Add to prompt history if using custom prompt
+      if (mode === 'custom' && customPrompt.trim()) {
+        setPromptHistory(prev => {
+          const newHistory = [customPrompt.trim(), ...prev.filter(p => p !== customPrompt.trim())]
+          return newHistory.slice(0, 10) // Keep last 10 prompts
+        })
+      }
 
       const provider = createAIProvider(aiProvider)
       const model = getModel(aiProvider)
-      
+
       const { textStream } = await streamText({
         model: provider.chat(model),
         temperature,
@@ -320,9 +383,9 @@ export function EditorWithSidebar() {
 
   const handleInsertPreview = () => {
     if (!previewContent) return
-    
+
     const lines = content.split('\n')
-    
+
     if (mode === 'revise') {
       const newLines = [
         ...lines.slice(0, selectedLines.start),
@@ -338,12 +401,105 @@ export function EditorWithSidebar() {
       ]
       updateFileContent(newLines.join('\n'))
     }
-    
+
     setPreviewContent('')
     setSelectedLines({ start: -1, end: -1 })
     toast({
       title: 'Applied',
       description: mode === 'revise' ? 'Text revised' : 'Text appended'
+    })
+  }
+
+  // Handler for document-level AI requests from AI Assistant Panel
+  const handleRunDocumentAI = async (aiMode: AIMode, customPromptText?: string) => {
+    if (!session) return
+
+    // Set the mode and custom prompt, then run AI
+    setMode(aiMode)
+    if (customPromptText) {
+      setCustomPrompt(customPromptText)
+    }
+
+    // Clear selection for document-level requests
+    setSelectedLines({ start: -1, end: -1 })
+
+    setIsStreaming(true)
+    setPreviewContent('')
+
+    try {
+      const documentContext = session.activeFileId
+        ? session.documentContexts[session.activeFileId]
+        : undefined
+
+      const { systemMessage, userPrompt } = buildDocumentLevelPrompt(
+        session.projectContext,
+        documentContext,
+        sessionContext,
+        content,
+        aiMode,
+        customPromptText
+      )
+
+      // Add to prompt history if using custom prompt
+      if (customPromptText?.trim()) {
+        setPromptHistory(prev => {
+          const newHistory = [customPromptText.trim(), ...prev.filter(p => p !== customPromptText.trim())]
+          return newHistory.slice(0, 10)
+        })
+      }
+
+      const provider = createAIProvider(aiProvider)
+      const model = getModel(aiProvider)
+
+      const { textStream } = await streamText({
+        model: provider.chat(model),
+        temperature,
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userPrompt }
+        ]
+      })
+
+      let accumulated = ''
+      for await (const chunk of textStream) {
+        accumulated += chunk
+        setPreviewContent(accumulated)
+      }
+    } catch (error) {
+      console.error('AI streaming error:', error)
+      toast({
+        title: 'AI Error',
+        description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
+        variant: 'destructive'
+      })
+    } finally {
+      setIsStreaming(false)
+    }
+  }
+
+  const handleAddToFavorites = (prompt: string) => {
+    const trimmedPrompt = prompt.trim()
+    if (!trimmedPrompt || favoritePrompts.includes(trimmedPrompt)) {
+      toast({
+        title: 'Already in favorites',
+        description: 'This prompt is already saved',
+        variant: 'default'
+      })
+      return
+    }
+
+    setFavoritePrompts(prev => [trimmedPrompt, ...prev].slice(0, 20)) // Keep max 20 favorites
+    toast({
+      title: 'Added to favorites',
+      description: 'Prompt saved for future use',
+    })
+  }
+
+  const handleRemoveFromFavorites = (prompt: string) => {
+    setFavoritePrompts(prev => prev.filter(p => p !== prompt))
+    toast({
+      title: 'Removed from favorites',
+      description: 'Prompt removed successfully',
     })
   }
 
@@ -373,9 +529,9 @@ export function EditorWithSidebar() {
             <p className="text-sm text-muted-foreground">Preparing your documents...</p>
           </div>
           <div className="flex justify-center gap-1 mt-4">
-            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{animationDelay: '0s'}}></div>
-            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0s' }}></div>
+            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
           </div>
         </div>
       </div>
@@ -384,7 +540,7 @@ export function EditorWithSidebar() {
 
   return (
     <div className="h-screen flex flex-col">
-      <div className="flex-1 flex overflow-hidden">
+      <div className={`flex-1 flex min-h-0 ${(selectedLines.start !== -1 || mode === 'ideas') ? 'pb-32' : ''}`}>
         {/* Sidebar */}
         <Sidebar
           folders={session.folders}
@@ -401,9 +557,9 @@ export function EditorWithSidebar() {
         />
 
         {/* Main editor */}
-        <div className="flex-1 flex flex-col border-r">
+        <div className="flex-1 flex flex-col border-r min-h-0">
           {currentFile && (
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-muted/20 to-muted/40 backdrop-blur-sm animate-fade-in">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-muted/20 to-muted/40 backdrop-blur-sm animate-fade-in flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-foreground">
@@ -428,16 +584,18 @@ export function EditorWithSidebar() {
               </div>
             </div>
           )}
-          <BlockEditor
-            value={content}
-            onChange={updateFileContent}
-            selectedLines={selectedLines}
-            onSelectionChange={setSelectedLines}
-          />
+          <div className="flex-1 min-h-0 h-full">
+            <MonacoEditor
+              value={content}
+              onChange={updateFileContent}
+              selectedLines={selectedLines}
+              onSelectionChange={setSelectedLines}
+            />
+          </div>
         </div>
 
-        {/* Right panel - Context Tabs */}
-        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in">
+        {/* Right panel - Unified ContextTabs */}
+        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in min-h-0">
           <ContextTabs
             projectContext={session.projectContext}
             onProjectSettingsClick={() => setIsProjectSettingsOpen(true)}
@@ -450,22 +608,34 @@ export function EditorWithSidebar() {
             onInsertPreview={handleInsertPreview}
             onClearPreview={() => setPreviewContent('')}
             currentFileName={currentFile?.name}
+            onRunDocumentAI={handleRunDocumentAI}
+            promptHistory={promptHistory}
+            favoritePrompts={favoritePrompts}
+            onAddToFavorites={handleAddToFavorites}
+            onRemoveFromFavorites={handleRemoveFromFavorites}
+            documentContent={content}
           />
         </div>
       </div>
 
-      {/* Selection toolbar */}
-      <SelectionToolbar
-        mode={mode}
-        temperature={temperature}
-        aiProvider={aiProvider}
-        onModeChange={setMode}
-        onTemperatureChange={setTemperature}
-        onAIProviderChange={setAiProvider}
-        onRunAI={handleRunAI}
-        hasSelection={selectedLines.start !== -1}
-        isStreaming={isStreaming}
-      />
+      {/* Selection toolbar - fixed position at bottom */}
+      {(selectedLines.start !== -1 || mode === 'ideas') && (
+        <div className="fixed bottom-2 left-2 right-2 border border-border/30 rounded-lg bg-background/95 backdrop-blur-sm shadow-lg z-50">
+          <SelectionToolbar
+            mode={mode}
+            temperature={temperature}
+            aiProvider={aiProvider}
+            customPrompt={customPrompt}
+            onModeChange={setMode}
+            onTemperatureChange={setTemperature}
+            onAIProviderChange={setAiProvider}
+            onCustomPromptChange={setCustomPrompt}
+            onRunAI={handleRunAI}
+            hasSelection={selectedLines.start !== -1}
+            isStreaming={isStreaming}
+          />
+        </div>
+      )}
 
       {/* Project Settings Modal */}
       <ProjectSettingsModal

@@ -45,3 +45,39 @@ export interface SessionState {
   projectContext: ProjectContext
   documentContexts: Record<string, DocumentContext>
 }
+
+// Enhanced AI interaction types
+export type AIMode = 
+  | 'revise'         // Improve existing text
+  | 'append'         // Continue existing text
+  | 'continue'       // Continue story/narrative
+  | 'ideas'          // Generate ideas and suggestions
+  | 'summarize'      // Create summary
+  | 'focus'          // Tighten and clarify
+  | 'enhance'        // Add details and descriptions
+  | 'custom'         // User-defined prompt
+
+export interface CustomPromptRequest {
+  mode: AIMode
+  customPrompt?: string
+  selectedText?: string
+  requiresSelection: boolean
+}
+
+export interface PromptTemplate {
+  id: string
+  name: string
+  description: string
+  mode: AIMode
+  promptText: string
+  requiresSelection: boolean
+  category: 'writing' | 'editing' | 'brainstorming' | 'analysis'
+}
+
+export interface AIAssistantState {
+  isActive: boolean
+  currentMode: AIMode
+  customPrompt: string
+  promptHistory: string[]
+  favoriteTemplates: string[] // template IDs
+}

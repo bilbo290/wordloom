@@ -6,13 +6,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { DocumentContextForm } from './DocumentContextForm'
 import { ContextHierarchy } from './ContextHierarchy'
+import { AIAssistantPanel } from './AIAssistantPanel'
 import { 
   FileText, 
   Eye, 
   Settings, 
   Sparkles, 
   Wand2, 
-  Trash2 
+  Trash2,
+  Brain
 } from 'lucide-react'
 
 interface ContextTabsProps {
@@ -36,9 +38,17 @@ interface ContextTabsProps {
   
   // Current file info
   currentFileName?: string
+  
+  // AI Assistant integration (optional)
+  onRunDocumentAI?: (mode: any, customPrompt?: string) => void
+  promptHistory?: string[]
+  favoritePrompts?: string[]
+  onAddToFavorites?: (prompt: string) => void
+  onRemoveFromFavorites?: (prompt: string) => void
+  documentContent?: string
 }
 
-type TabType = 'context' | 'preview'
+type TabType = 'context' | 'preview' | 'assistant'
 
 export function ContextTabs({
   projectContext,
@@ -51,7 +61,13 @@ export function ContextTabs({
   isStreaming,
   onInsertPreview,
   onClearPreview,
-  currentFileName
+  currentFileName,
+  onRunDocumentAI,
+  promptHistory = [],
+  favoritePrompts = [],
+  onAddToFavorites,
+  onRemoveFromFavorites,
+  documentContent = ''
 }: ContextTabsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('context')
 
@@ -86,9 +102,9 @@ export function ContextTabs({
   )
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Tab Navigation */}
-      <div className="flex border-b border-border/50 bg-background/30 backdrop-blur-sm p-1 space-x-1">
+      <div className="flex-shrink-0 flex border-b border-border/50 bg-background/30 backdrop-blur-sm p-1 space-x-1">
         <TabButton 
           tab="context" 
           icon={FileText} 
@@ -104,10 +120,17 @@ export function ContextTabs({
           icon={Eye} 
           label="Preview" 
         />
+        {onRunDocumentAI && (
+          <TabButton 
+            tab="assistant" 
+            icon={Brain} 
+            label="Assistant" 
+          />
+        )}
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0 enhanced-scrollbar">
         {activeTab === 'context' ? (
           <div className="p-4 space-y-4">
             {/* Context Hierarchy Visualization */}
@@ -198,12 +221,12 @@ export function ContextTabs({
                   placeholder="e.g., Focus on character development, improve flow, check grammar..."
                   value={sessionContext}
                   onChange={(e) => onSessionContextChange(e.target.value)}
-                  className="h-24 bg-background/50 backdrop-blur-sm border-border/50 focus:border-primary/50 transition-all duration-300 resize-none text-sm"
+                  className="h-24 bg-background/50 backdrop-blur-sm border-border/50 focus:border-primary/50 transition-all duration-300 text-sm enhanced-scrollbar overflow-y-auto resizable"
                 />
               </CardContent>
             </Card>
           </div>
-        ) : (
+        ) : activeTab === 'preview' ? (
           // Preview Tab
           <div className="p-4">
             <Card className="glass border-border/30 h-full">
@@ -222,7 +245,7 @@ export function ContextTabs({
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-4 h-full">
-                <div className="bg-background/30 border border-border/30 rounded-lg p-3 min-h-[200px] max-h-[400px] overflow-y-auto">
+                <div className="bg-background/30 border border-border/30 rounded-lg p-3 min-h-[200px] overflow-y-auto enhanced-scrollbar resizable-both">
                   {previewContent ? (
                     <div className="text-sm leading-relaxed whitespace-pre-wrap">
                       {previewContent}
@@ -259,6 +282,22 @@ export function ContextTabs({
                 )}
               </CardContent>
             </Card>
+          </div>
+        ) : (
+          // Assistant Tab
+          <div className="p-4">
+            {onRunDocumentAI && (
+              <AIAssistantPanel
+                currentFileName={currentFileName}
+                documentContent={documentContent}
+                onRunDocumentAI={onRunDocumentAI}
+                isStreaming={isStreaming}
+                promptHistory={promptHistory}
+                favoritePrompts={favoritePrompts}
+                onAddToFavorites={onAddToFavorites}
+                onRemoveFromFavorites={onRemoveFromFavorites}
+              />
+            )}
           </div>
         )}
       </div>
