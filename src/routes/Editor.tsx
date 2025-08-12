@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
-import { openai, MODEL, SYSTEM_MESSAGE, buildUserPrompt } from '@/lib/ai'
+import { createAIProvider, getModel, SYSTEM_MESSAGE, buildUserPrompt, type AIProvider } from '@/lib/ai'
 
 const CONTEXT_CHARS = 800
 const STORAGE_KEY = 'wordloom-doc'
@@ -20,6 +20,7 @@ export function Editor() {
   const [temperature, setTemperature] = useState(0.7)
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
+  const [aiProvider, setAiProvider] = useState<AIProvider>('lmstudio')
   const { toast } = useToast()
 
   // Load saved content on mount
@@ -90,8 +91,11 @@ export function Editor() {
         mode
       )
 
+      const provider = createAIProvider(aiProvider)
+      const model = getModel(aiProvider)
+      
       const { textStream } = await streamText({
-        model: openai.chat(MODEL),
+        model: provider.chat(model),
         temperature,
         messages: [
           { role: 'system', content: SYSTEM_MESSAGE },
@@ -225,8 +229,10 @@ export function Editor() {
       <SelectionToolbar
         mode={mode}
         temperature={temperature}
+        aiProvider={aiProvider}
         onModeChange={setMode}
         onTemperatureChange={setTemperature}
+        onAIProviderChange={setAiProvider}
         onRunAI={handleRunAI}
         hasSelection={selectedLines.start !== -1}
         isStreaming={isStreaming}

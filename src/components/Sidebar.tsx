@@ -3,8 +3,7 @@ import {
   ChevronRight, 
   ChevronDown, 
   Folder, 
-  File, 
-  Plus, 
+  File,
   MoreVertical,
   Trash2,
   Edit2,
@@ -23,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { FolderItem, FileItem } from '@/lib/types'
+import { FolderItem } from '@/lib/types'
 import { fileSystemManager, isFileSystemSupported } from '@/lib/filesystem'
 
 interface SidebarProps {

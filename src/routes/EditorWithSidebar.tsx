@@ -3,33 +3,33 @@ import { streamText } from 'ai'
 import { BlockEditor } from '@/components/editor/BlockEditor'
 import { SelectionToolbar } from '@/components/editor/SelectionToolbar'
 import { Sidebar } from '@/components/Sidebar'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import { ContextTabs } from '@/components/ContextTabs'
+import { ProjectSettingsModal } from '@/components/ProjectSettingsModal'
 import { useToast } from '@/components/ui/use-toast'
-import { createAIProvider, getModel, SYSTEM_MESSAGE, buildUserPrompt, type AIProvider } from '@/lib/ai'
-import { Sparkles, Wand2 } from 'lucide-react'
+import { createAIProvider, getModel, buildEnhancedPrompt, type AIProvider } from '@/lib/ai'
 import { 
   loadSession, 
   saveSession, 
   createFolder, 
   createFile, 
-  generateId 
+  updateProjectContext,
+  updateDocumentContext,
+  ensureDocumentContext
 } from '@/lib/session'
-import { SessionState } from '@/lib/types'
+import { SessionState, ProjectContext, DocumentContext } from '@/lib/types'
 
 const CONTEXT_CHARS = 800
 
 export function EditorWithSidebar() {
   const [session, setSession] = useState<SessionState | null>(null)
-  const [documentContext, setDocumentContext] = useState('')
+  const [sessionContext, setSessionContext] = useState('')
   const [selectedLines, setSelectedLines] = useState({ start: -1, end: -1 })
   const [mode, setMode] = useState<'revise' | 'append'>('revise')
   const [temperature, setTemperature] = useState(0.7)
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
   const [aiProvider, setAiProvider] = useState<AIProvider>('lmstudio')
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
   const { toast } = useToast()
 
   // Load session on mount
@@ -77,6 +77,7 @@ export function EditorWithSidebar() {
 
   const updateFileContent = (newContent: string) => {
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       const folder = newSession.folders.find(f => f.id === prev.activeFolderId)
       if (folder) {
@@ -91,16 +92,20 @@ export function EditorWithSidebar() {
   }
 
   const handleFileSelect = (folderId: string, fileId: string) => {
-    setSession(prev => ({
-      ...prev,
-      activeFolderId: folderId,
-      activeFileId: fileId
-    }))
+    setSession(prev => {
+      if (!prev) return null
+      return {
+        ...prev,
+        activeFolderId: folderId,
+        activeFileId: fileId
+      }
+    })
     setSelectedLines({ start: -1, end: -1 })
   }
 
   const handleFolderToggle = (folderId: string) => {
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       const folder = newSession.folders.find(f => f.id === folderId)
       if (folder) {
@@ -112,17 +117,21 @@ export function EditorWithSidebar() {
 
   const handleFolderCreate = () => {
     const newFolder = createFolder('New Folder')
-    setSession(prev => ({
-      ...prev,
-      folders: [...prev.folders, newFolder],
-      activeFolderId: newFolder.id,
-      activeFileId: newFolder.files[0].id
-    }))
+    setSession(prev => {
+      if (!prev) return null
+      return {
+        ...prev,
+        folders: [...prev.folders, newFolder],
+        activeFolderId: newFolder.id,
+        activeFileId: newFolder.files[0].id
+      }
+    })
   }
 
   const handleFileCreate = (folderId: string) => {
     const newFile = createFile('Untitled.txt')
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       const folder = newSession.folders.find(f => f.id === folderId)
       if (folder) {
@@ -130,12 +139,13 @@ export function EditorWithSidebar() {
         newSession.activeFolderId = folderId
         newSession.activeFileId = newFile.id
       }
-      return newSession
+      return ensureDocumentContext(newSession, newFile.id)
     })
   }
 
   const handleFolderRename = (folderId: string, newName: string) => {
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       const folder = newSession.folders.find(f => f.id === folderId)
       if (folder) {
@@ -147,6 +157,7 @@ export function EditorWithSidebar() {
 
   const handleFileRename = (folderId: string, fileId: string, newName: string) => {
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       const folder = newSession.folders.find(f => f.id === folderId)
       if (folder) {
@@ -162,6 +173,7 @@ export function EditorWithSidebar() {
 
   const handleFolderDelete = (folderId: string) => {
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       newSession.folders = newSession.folders.filter(f => f.id !== folderId)
       
@@ -178,10 +190,14 @@ export function EditorWithSidebar() {
 
   const handleFileDelete = (folderId: string, fileId: string) => {
     setSession(prev => {
+      if (!prev) return null
       const newSession = { ...prev }
       const folder = newSession.folders.find(f => f.id === folderId)
       if (folder) {
         folder.files = folder.files.filter(f => f.id !== fileId)
+        
+        // Remove document context for deleted file
+        delete newSession.documentContexts[fileId]
         
         // If we deleted the active file, select another
         if (prev.activeFileId === fileId && folder.files.length > 0) {
@@ -196,6 +212,26 @@ export function EditorWithSidebar() {
       return newSession
     })
   }
+
+  // Context management handlers
+  const handleProjectContextUpdate = (updates: Partial<ProjectContext>) => {
+    if (!session) return
+    setSession(updateProjectContext(session, updates))
+  }
+
+  const handleDocumentContextUpdate = (updates: Partial<DocumentContext>) => {
+    if (!session || !session.activeFileId) return
+    setSession(updateDocumentContext(session, session.activeFileId, updates))
+  }
+
+  // Ensure document context exists when switching files
+  useEffect(() => {
+    if (session?.activeFileId) {
+      setSession(prevSession => 
+        prevSession ? ensureDocumentContext(prevSession, session.activeFileId!) : prevSession
+      )
+    }
+  }, [session?.activeFileId])
 
   const getSelectedText = useCallback(() => {
     if (selectedLines.start === -1) return ''
@@ -225,7 +261,7 @@ export function EditorWithSidebar() {
 
   const handleRunAI = async () => {
     const selectedText = getSelectedText()
-    if (!selectedText) {
+    if (!selectedText || !session) {
       toast({
         title: 'No selection',
         description: 'Please select some text first',
@@ -239,8 +275,14 @@ export function EditorWithSidebar() {
     
     try {
       const { left, right } = getContext()
-      const userPrompt = buildUserPrompt(
+      const documentContext = session.activeFileId 
+        ? session.documentContexts[session.activeFileId] 
+        : undefined
+      
+      const { systemMessage, userPrompt } = buildEnhancedPrompt(
+        session.projectContext,
         documentContext,
+        sessionContext,
         left,
         selectedText,
         right,
@@ -254,7 +296,7 @@ export function EditorWithSidebar() {
         model: provider.chat(model),
         temperature,
         messages: [
-          { role: 'system', content: SYSTEM_MESSAGE },
+          { role: 'system', content: systemMessage },
           { role: 'user', content: userPrompt }
         ]
       })
@@ -394,78 +436,21 @@ export function EditorWithSidebar() {
           />
         </div>
 
-        {/* Right panel */}
-        <div className="w-96 flex flex-col p-4 gap-6 overflow-auto bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in">
-          <div className="glass rounded-xl p-4 shadow-elegant animate-slide-up">
-            <Label htmlFor="context" className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-              <Sparkles className="h-4 w-4 text-violet-500" />
-              Document Context
-            </Label>
-            <Textarea
-              id="context"
-              placeholder="Add context to guide AI output (optional)"
-              value={documentContext}
-              onChange={(e) => setDocumentContext(e.target.value)}
-              className="h-32 bg-background/50 backdrop-blur-sm border-border/50 focus:border-primary/50 transition-all duration-300 resize-none"
-            />
-          </div>
-
-          <Card className="flex-1 glass-strong shadow-card border-border/30 animate-slide-up" style={{animationDelay: '0.1s'}}>
-            <CardHeader className="pb-3 border-b border-border/30">
-              <CardTitle className="text-lg text-gradient flex items-center gap-2">
-                <div className="p-1 rounded-md bg-gradient-to-br from-cyan-500/20 to-blue-500/20">
-                  <Wand2 className="h-4 w-4" />
-                </div>
-                Live Preview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              {previewContent ? (
-                <div className="space-y-4 animate-fade-in">
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed p-4 bg-gradient-to-br from-accent/10 to-accent/5 rounded-lg border border-border/30 shadow-inner">
-                    {previewContent}
-                    {isStreaming && (
-                      <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1"></span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={handleInsertPreview}
-                      disabled={isStreaming}
-                      className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-glow transition-all duration-200 hover:scale-105"
-                    >
-                      <Wand2 className="h-4 w-4 mr-2" />
-                      Insert Preview
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      onClick={() => setPreviewContent('')}
-                      disabled={isStreaming}
-                      className="hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive transition-all duration-200"
-                    >
-                      Clear
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-48 text-center animate-pulse-subtle">
-                  <div className="p-4 rounded-full bg-gradient-to-br from-muted/40 to-muted/20 mb-4">
-                    <Wand2 className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <p className="text-muted-foreground text-sm">
-                    {isStreaming ? (
-                      <span className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                        Generating...
-                      </span>
-                    ) : (
-                      'AI output will appear here'
-                    )}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Right panel - Context Tabs */}
+        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in">
+          <ContextTabs
+            projectContext={session.projectContext}
+            onProjectSettingsClick={() => setIsProjectSettingsOpen(true)}
+            documentContext={session.activeFileId ? session.documentContexts[session.activeFileId] : undefined}
+            onDocumentContextUpdate={handleDocumentContextUpdate}
+            sessionContext={sessionContext}
+            onSessionContextChange={setSessionContext}
+            previewContent={previewContent}
+            isStreaming={isStreaming}
+            onInsertPreview={handleInsertPreview}
+            onClearPreview={() => setPreviewContent('')}
+            currentFileName={currentFile?.name}
+          />
         </div>
       </div>
 
@@ -480,6 +465,14 @@ export function EditorWithSidebar() {
         onRunAI={handleRunAI}
         hasSelection={selectedLines.start !== -1}
         isStreaming={isStreaming}
+      />
+
+      {/* Project Settings Modal */}
+      <ProjectSettingsModal
+        projectContext={session.projectContext}
+        isOpen={isProjectSettingsOpen}
+        onClose={() => setIsProjectSettingsOpen(false)}
+        onSave={handleProjectContextUpdate}
       />
     </div>
   )

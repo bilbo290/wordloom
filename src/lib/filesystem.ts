@@ -179,11 +179,13 @@ export class FileSystemManager {
         if (folder) folders.push(folder)
       }
 
-      return {
+      // Use migration logic from session.ts  
+      const { migrateSession } = await import('./session')
+      return migrateSession({
         folders,
         activeFileId: sessionData.activeFileId,
         activeFolderId: sessionData.activeFolderId
-      }
+      })
     } catch (error) {
       console.warn('Failed to load from file system, falling back to localStorage:', error)
       const stored = localStorage.getItem('wordloom-session')

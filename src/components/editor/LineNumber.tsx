@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 interface LineNumberProps {
   lineNumber: number
   isSelected: boolean
-  onClick: () => void
+  onClick: (e: React.MouseEvent) => void
 }
 
 export function LineNumber({ lineNumber, isSelected, onClick }: LineNumberProps) {

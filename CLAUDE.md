@@ -162,6 +162,90 @@ interface SessionState {
 
 **Default Session**: App starts with "My Project" folder containing "Untitled.txt"
 
+## Hierarchical Context Management System
+
+**Architecture**: 3-tier context inheritance system for enhanced AI prompts and consistent writing guidance.
+
+**Context Hierarchy**:
+```
+Project Context (Global)
+    ↓ inherits
+Document Context (Per File) 
+    ↓ inherits
+Session Context (Current UI)
+```
+
+**Data Structures**:
+```typescript
+interface ProjectContext {
+  id: string
+  name: string
+  description?: string
+  genre?: 'fiction' | 'non-fiction' | 'technical' | 'blog' | 'academic' | 'business' | 'other'
+  style?: 'formal' | 'casual' | 'technical' | 'creative' | 'journalistic' | 'conversational'
+  audience?: string
+  systemPrompt?: string
+  constraints?: string
+  customFields?: Record<string, string>
+  createdAt: number
+  updatedAt: number
+}
+
+interface DocumentContext {
+  fileId: string
+  purpose?: string
+  status?: 'draft' | 'review' | 'final' | 'archived'
+  documentNotes?: string
+  customFields?: Record<string, string>
+  createdAt: number
+  updatedAt: number
+}
+
+interface SessionState {
+  folders: FolderItem[]
+  activeFileId: string | null
+  activeFolderId: string | null
+  projectContext: ProjectContext
+  documentContexts: Record<string, DocumentContext>
+}
+```
+
+**UI Components**:
+- **ProjectSettingsModal**: Full project configuration with genre, style, audience, constraints, custom system prompts, and extensible custom fields
+- **ContextTabs**: Enhanced right panel with Context and Preview tabs
+- **DocumentContextForm**: File-specific context editing (purpose, status, notes, custom fields)
+- **ContextHierarchy**: Visual representation of context inheritance flow
+
+**Context Merging Algorithm**:
+- **System Message**: Base system prompt + project guidelines (genre, style, audience, constraints)
+- **User Prompt**: Layered sections in order:
+  1. Project context (name, description, custom fields)
+  2. Document context (purpose, status, notes, custom fields)  
+  3. Session notes (current textarea input)
+  4. Left context (±800 chars before selection)
+  5. Selected text
+  6. Right context (±800 chars after selection)
+  7. Task instruction (revise/append)
+
+**Migration & Compatibility**:
+- **Automatic Migration**: Existing sessions upgrade seamlessly on load
+- **Backwards Compatible**: Legacy sessions create default project context
+- **Data Preservation**: All existing content and file structures maintained
+- **Graceful Fallbacks**: Works without project/document context configured
+
+**Usage Workflows**:
+1. **Project Setup**: Configure writing guidelines once via "Project Settings" modal
+2. **Document Customization**: Set file-specific context via document form
+3. **Session Notes**: Add temporary context for current editing session
+4. **AI Integration**: Enhanced prompts automatically merge all context layers
+5. **Inheritance**: Document inherits project settings, session inherits both
+
+**Benefits**:
+- **Consistency**: Project-wide guidelines maintain voice across files
+- **Flexibility**: File-specific customization when needed
+- **Clarity**: Visual hierarchy shows exactly what context AI receives
+- **Quality**: Richer context improves AI output relevance and accuracy
+
 Theming Requirements
 Tailwind config: darkMode: 'class'.
 
@@ -506,6 +590,44 @@ Features Implemented
 ✅ **OS Integration**: Platform-specific default paths and native file experience  
 ✅ **Dual AI Provider Support**: Switch between LM Studio and Ollama with provider selection UI
 ✅ **Dynamic Configuration**: Environment variables for both providers with real-time switching
+✅ **Modern UI/UX Enhancement**: Complete visual transformation from basic to premium design
+
+## UI/UX Enhancement System (December 2024)
+
+**Visual Design Language**: Modern, glass morphism aesthetic with gradient accents and smooth animations throughout the interface.
+
+**Animation System**: Custom Tailwind utilities for consistent micro-interactions:
+```css
+@layer utilities {
+  .animate-fade-in { animation: fade-in 0.3s ease-out; }
+  .animate-slide-up { animation: slide-up 0.2s ease-out; }
+  .animate-pulse-subtle { animation: pulse-subtle 2s infinite; }
+  .animate-writing { animation: writing-pulse 1.5s infinite; }
+}
+```
+
+**Glass Morphism Effects**: Backdrop blur with transparency for modern depth:
+```css
+.glass { @apply backdrop-blur-md bg-background/80 border border-white/10; }
+.glass-strong { @apply backdrop-blur-lg bg-background/90 border border-white/20; }
+```
+
+**Enhanced Component Styling**:
+- **Header**: Gradient brand identity with Sparkles icon and "AI-Powered Writing" tagline
+- **Sidebar**: Colored file/folder icons (amber folders, blue files) with smooth hover effects
+- **Editor**: Animated line selection with gradient backgrounds and border accents
+- **Right Panel**: Glass morphism cards with gradient headers and enhanced preview area
+- **Toolbar**: Visual grouping with gradient buttons and improved state indicators
+
+**Loading States**: Professional loading screens with branded spinners and smooth transitions.
+
+**Visual Feedback**: Enhanced selection highlighting, hover effects, and status indicators throughout.
+
+**Implementation Notes**:
+- All animations work in both light and dark modes
+- Consistent use of CSS custom properties for theme compatibility
+- Performance-optimized transitions (GPU-accelerated transforms)
+- Semantic color usage (green for success, blue for info, amber for warnings)
 
 Nice-to-Have (future enhancements)
 Context menu actions on text selection.
