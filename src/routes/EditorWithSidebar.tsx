@@ -715,7 +715,7 @@ export function EditorWithSidebar() {
   // Show loading while session is initializing
   if (!session) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/10">
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/10">
         <div className="text-center glass rounded-2xl p-8 shadow-elegant animate-fade-in">
           <div className="relative">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-muted border-t-primary mx-auto shadow-glow"></div>
@@ -736,7 +736,7 @@ export function EditorWithSidebar() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-full flex flex-col">
       <div className="flex-1 flex min-h-0">
         {/* Sidebar */}
         <Sidebar
@@ -847,30 +847,32 @@ export function EditorWithSidebar() {
         </div>
 
         {/* Right panel - Simplified ContextTabs */}
-        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in min-h-0 flex flex-col">
-          <ContextTabs
-            projectContext={session.projectContext}
-            onProjectSettingsClick={() => setIsProjectSettingsOpen(true)}
-            documentContext={session.activeFileId ? session.documentContexts[session.activeFileId] : undefined}
-            onDocumentContextUpdate={handleDocumentContextUpdate}
-            sessionContext={sessionContext}
-            onSessionContextChange={setSessionContext}
-            currentFileName={currentFile?.name}
-            onRunDocumentAI={handleRunDocumentAI}
-            isStreaming={isStreaming}
-            promptHistory={promptHistory}
-            favoritePrompts={favoritePrompts}
-            onAddToFavorites={handleAddToFavorites}
-            onRemoveFromFavorites={handleRemoveFromFavorites}
-            documentContent={content}
-            aiProvider={aiProvider}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-          />
+        <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto enhanced-scrollbar">
+            <ContextTabs
+              projectContext={session.projectContext}
+              onProjectSettingsClick={() => setIsProjectSettingsOpen(true)}
+              documentContext={session.activeFileId ? session.documentContexts[session.activeFileId] : undefined}
+              onDocumentContextUpdate={handleDocumentContextUpdate}
+              sessionContext={sessionContext}
+              onSessionContextChange={setSessionContext}
+              currentFileName={currentFile?.name}
+              onRunDocumentAI={handleRunDocumentAI}
+              isStreaming={isStreaming}
+              promptHistory={promptHistory}
+              favoritePrompts={favoritePrompts}
+              onAddToFavorites={handleAddToFavorites}
+              onRemoveFromFavorites={handleRemoveFromFavorites}
+              documentContent={content}
+              aiProvider={aiProvider}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+          </div>
           
           {/* Context Preview */}
           {contextPreviewVisible && lastContextInfo && (
-            <div className="p-4 border-t">
+            <div className="p-4 border-t flex-shrink-0 max-h-96 overflow-y-auto enhanced-scrollbar">
               <ContextPreview
                 contextInfo={lastContextInfo}
                 totalPromptTokens={lastContextInfo.totalTokens + 100} // Rough estimate with system message

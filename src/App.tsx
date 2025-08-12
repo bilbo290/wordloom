@@ -7,8 +7,8 @@ import { Settings as SettingsIcon, Sparkles } from 'lucide-react'
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-screen flex flex-col">
-      <header className="relative border-b bg-gradient-to-r from-background via-background to-muted/30 backdrop-blur-sm px-6 py-4 shadow-elegant animate-fade-in">
+    <div className="h-full flex flex-col">
+      <header className="relative border-b bg-gradient-to-r from-background via-background to-muted/30 backdrop-blur-sm px-6 py-4 shadow-elegant animate-fade-in flex-shrink-0">
         <div className="absolute inset-0 bg-gradient-to-r from-violet-500/5 via-blue-500/5 to-cyan-500/5"></div>
         <div className="relative flex items-center justify-between">
           <Link to="/" className="group flex items-center gap-3 transition-all duration-300 hover:scale-105">
@@ -35,7 +35,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="flex-1 overflow-hidden animate-slide-up">
+      <main className="flex-1 overflow-hidden animate-slide-up min-h-0">
         {children}
       </main>
     </div>
