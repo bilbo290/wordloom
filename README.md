@@ -7,11 +7,11 @@ A local-first AI-powered text editor with block selection and streaming AI assis
 - **Session Management**: Organize files in folders/projects with a sidebar
 - **Multi-file support**: Create, rename, and delete files and folders
 - **Block-based text selection**: Select entire lines/blocks with line numbers
-- **AI-powered editing**: Revise or append to selected text using LM Studio or Ollama
+- **AI-powered editing**: Revise or append to selected text using Ollama or LM Studio
 - **Live preview**: See AI output stream in real-time
 - **Dark/Light theme**: Persistent theme toggle
 - **Auto-save**: All files and folders automatically saved to localStorage
-- **Keyboard shortcuts**: Cmd/Ctrl + Enter to run AI
+- **Keyboard shortcuts**: Cmd/Ctrl + Enter to run AI, ESC to stop generation
 
 ## Tech Stack
 
@@ -19,7 +19,7 @@ A local-first AI-powered text editor with block selection and streaming AI assis
 - **Framework**: React + TypeScript
 - **Build**: Vite
 - **Styling**: Tailwind CSS + shadcn/ui
-- **AI**: Vercel AI SDK with LM Studio or Ollama (OpenAI-compatible)
+- **AI**: Vercel AI SDK with Ollama or LM Studio (OpenAI-compatible)
 - **Routing**: React Router
 
 ## Setup
@@ -50,18 +50,18 @@ VITE_OLLAMA_MODEL=llama3.2
 
 ### 3. Start Your AI Provider
 
-#### For LM Studio:
+#### For Ollama (default):
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Pull a model: `ollama pull gemma3:4b`
+3. Ollama runs automatically on port 11434
+4. Test with: `curl http://localhost:11434/api/tags`
+
+#### For LM Studio (alternative):
 1. Open LM Studio application
 2. Load your preferred model
 3. Go to the "Local Server" tab
 4. Click "Start Server" (default port is 1234)
 5. Ensure "Enable CORS" is checked
-
-#### For Ollama:
-1. Install Ollama from [ollama.ai](https://ollama.ai)
-2. Pull a model: `ollama pull llama3.2`
-3. Ollama runs automatically on port 11434
-4. Test with: `curl http://localhost:11434/api/tags`
 
 ### 4. Run the development server
 
@@ -83,12 +83,13 @@ Open [http://localhost:5173](http://localhost:5173) to view the app.
 ### Text Editing
 1. **Write or paste text** in the main editor
 2. **Select blocks** by clicking line numbers (Shift+Click to extend, Ctrl/Cmd+Click to toggle)
-3. **Choose AI provider**: LM Studio or Ollama (in bottom toolbar)
+3. **Choose AI provider**: Ollama or LM Studio (in bottom toolbar)
 4. **Choose mode**: "Revise Selection" or "Append to Selection"
 5. **Adjust temperature** (0-2, default 0.7)
 6. **Run AI** (or press Cmd/Ctrl + Enter)
-7. **Preview output** in the right panel
-8. **Insert** the generated text when satisfied
+7. **Preview output** in the split preview pane
+8. **Stop generation** (ESC key or Stop button if needed)
+9. **Insert** the generated text when satisfied
 
 ## Build for Production
 
@@ -99,15 +100,16 @@ bun run preview
 
 ## Troubleshooting
 
-### LM Studio Issues
-- **Connection refused**: Ensure LM Studio's local server is running on port 1234
-- **CORS errors**: Enable CORS in LM Studio's server settings, or uncomment the proxy in `vite.config.ts`
-- **No response**: Make sure a model is loaded in LM Studio before starting the server
-
-### Ollama Issues
+### Ollama Issues (default provider)
 - **Connection refused**: Make sure Ollama is running: `ollama serve`
-- **Model not found**: Pull the model first: `ollama pull llama3.2`
-- **CORS errors**: Ollama usually handles CORS automatically, but you can set `OLLAMA_ORIGINS=*`
+- **Model not found**: Pull the model first: `ollama pull gemma3:4b`
+- **CORS errors**: ✅ **Automatically handled!** The app includes proxy configuration for Ollama
+
+### LM Studio Issues (alternative provider)  
+- **Connection refused**: Ensure LM Studio's local server is running on port 1234
+- **CORS errors**: ✅ **Automatically handled!** The app uses a proxy in development mode to avoid CORS issues
+- **No response**: Make sure a model is loaded in LM Studio before starting the server
+- **Still having CORS issues?** The proxy is enabled by default, but you can verify it's working by checking the Network tab in DevTools
 
 ### General
 - Use the **Settings page** to test your connection and see configuration help

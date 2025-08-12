@@ -26,7 +26,7 @@ interface AIAssistantPanelProps {
   currentFileName?: string
   documentContent: string
   onRunDocumentAI: (mode: AIMode, customPrompt?: string) => void
-  isStreaming: boolean
+  isStreaming?: boolean
   promptHistory: string[]
   favoritePrompts?: string[]
   onAddToFavorites?: (prompt: string) => void
@@ -37,7 +37,7 @@ export function AIAssistantPanel({
   currentFileName,
   documentContent,
   onRunDocumentAI,
-  isStreaming,
+  isStreaming = false,
   promptHistory,
   favoritePrompts = [],
   onAddToFavorites,
@@ -132,7 +132,11 @@ export function AIAssistantPanel({
                 size="sm"
                 onClick={() => handleRunTemplate(template)}
                 disabled={isStreaming || !documentContent.trim()}
-                className="h-auto p-3 flex flex-col items-start space-y-1 hover:bg-accent/50 transition-colors"
+                className={`h-auto p-3 flex flex-col items-start space-y-1 transition-all duration-200 ${
+                  isStreaming 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-accent/50 hover:scale-[1.02]'
+                }`}
               >
                 <div className="flex items-center space-x-2 w-full">
                   {getCategoryIcon(template.category)}
@@ -215,11 +219,24 @@ export function AIAssistantPanel({
           <div className="flex items-center gap-2">
             <Button
               onClick={handleRunCustom}
-              disabled={!customPrompt.trim() || isStreaming || !documentContent.trim()}
-              className="flex-1 bg-primary hover:bg-primary/90 text-sm"
+              disabled={isStreaming || !customPrompt.trim() || !documentContent.trim()}
+              className={`flex-1 text-sm transition-all duration-200 ${
+                isStreaming || !customPrompt.trim() || !documentContent.trim()
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                  : 'bg-primary hover:bg-primary/90 hover:scale-105 shadow-md hover:shadow-lg'
+              }`}
             >
-              <Wand2 className="h-3 w-3 mr-2" />
-              {isStreaming ? 'Processing...' : 'Ask AI'}
+              {isStreaming ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-3 w-3 mr-2" />
+                  Ask AI
+                </>
+              )}
             </Button>
             
             {customPrompt.trim() && onAddToFavorites && (

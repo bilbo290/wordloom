@@ -9,11 +9,7 @@ import { ContextHierarchy } from './ContextHierarchy'
 import { AIAssistantPanel } from './AIAssistantPanel'
 import { 
   FileText, 
-  Eye, 
-  Settings, 
-  Sparkles, 
-  Wand2, 
-  Trash2,
+  Settings,
   Brain
 } from 'lucide-react'
 
@@ -30,17 +26,12 @@ interface ContextTabsProps {
   sessionContext: string
   onSessionContextChange: (value: string) => void
   
-  // Preview
-  previewContent: string
-  isStreaming: boolean
-  onInsertPreview: () => void
-  onClearPreview: () => void
-  
   // Current file info
   currentFileName?: string
   
   // AI Assistant integration (optional)
   onRunDocumentAI?: (mode: any, customPrompt?: string) => void
+  isStreaming?: boolean
   promptHistory?: string[]
   favoritePrompts?: string[]
   onAddToFavorites?: (prompt: string) => void
@@ -48,7 +39,7 @@ interface ContextTabsProps {
   documentContent?: string
 }
 
-type TabType = 'context' | 'preview' | 'assistant'
+type TabType = 'context' | 'assistant'
 
 export function ContextTabs({
   projectContext,
@@ -57,12 +48,9 @@ export function ContextTabs({
   onDocumentContextUpdate,
   sessionContext,
   onSessionContextChange,
-  previewContent,
-  isStreaming,
-  onInsertPreview,
-  onClearPreview,
   currentFileName,
   onRunDocumentAI,
+  isStreaming = false,
   promptHistory = [],
   favoritePrompts = [],
   onAddToFavorites,
@@ -114,11 +102,6 @@ export function ContextTabs({
             documentContext?.documentNotes || documentContext?.purpose,
             sessionContext.trim()
           ].filter(Boolean).length}
-        />
-        <TabButton 
-          tab="preview" 
-          icon={Eye} 
-          label="Preview" 
         />
         {onRunDocumentAI && (
           <TabButton 
@@ -223,63 +206,6 @@ export function ContextTabs({
                   onChange={(e) => onSessionContextChange(e.target.value)}
                   className="h-24 bg-background/50 backdrop-blur-sm border-border/50 focus:border-primary/50 transition-all duration-300 text-sm enhanced-scrollbar overflow-y-auto resizable"
                 />
-              </CardContent>
-            </Card>
-          </div>
-        ) : activeTab === 'preview' ? (
-          // Preview Tab
-          <div className="p-4">
-            <Card className="glass border-border/30 h-full">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    isStreaming ? 'bg-green-500 animate-pulse-subtle' : 'bg-gray-400'
-                  }`}></div>
-                  <span>AI Preview</span>
-                  {isStreaming && (
-                    <div className="flex items-center space-x-1 text-xs text-green-600">
-                      <Sparkles className="h-3 w-3 animate-writing" />
-                      <span>Generating...</span>
-                    </div>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-4 h-full">
-                <div className="bg-background/30 border border-border/30 rounded-lg p-3 min-h-[200px] overflow-y-auto enhanced-scrollbar resizable-both">
-                  {previewContent ? (
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {previewContent}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-32 text-muted-foreground">
-                      <div className="text-center space-y-2">
-                        <Wand2 className="h-8 w-8 mx-auto opacity-50" />
-                        <p className="text-sm">AI output will appear here</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {previewContent && (
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={onInsertPreview} 
-                      className="flex-1 bg-primary hover:bg-primary/90 text-sm"
-                      disabled={isStreaming}
-                    >
-                      <Wand2 className="h-3 w-3 mr-2" />
-                      Insert Preview
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={onClearPreview}
-                      className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20"
-                      disabled={isStreaming}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>

@@ -14,7 +14,8 @@ import {
   FileText,
   Target,
   Sparkles,
-  Zap
+  Zap,
+  Square
 } from 'lucide-react'
 import type { AIProvider } from '@/lib/ai'
 import type { AIMode } from '@/lib/types'
@@ -30,6 +31,7 @@ interface SelectionToolbarProps {
   onAIProviderChange: (provider: AIProvider) => void
   onCustomPromptChange: (prompt: string) => void
   onRunAI: () => void
+  onStopAI?: () => void
   hasSelection: boolean
   isStreaming: boolean
 }
@@ -44,6 +46,7 @@ export function SelectionToolbar({
   onAIProviderChange,
   onCustomPromptChange,
   onRunAI,
+  onStopAI,
   hasSelection,
   isStreaming
 }: SelectionToolbarProps) {
@@ -210,30 +213,46 @@ export function SelectionToolbar({
           </div>
         </div>
 
-        {/* Run AI Button */}
-        <Button
-          onClick={onRunAI}
-          disabled={(!hasSelection && mode !== 'ideas') || isStreaming}
-          className={`transition-all duration-300 ${
-            (hasSelection || mode === 'ideas') && !isStreaming
-              ? 'bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 shadow-glow hover:shadow-lg hover:scale-105'
-              : ''
-          }`}
-          size="lg"
-        >
-          <Wand2 className="w-4 h-4 mr-2" />
-          {isStreaming ? (
-            <span className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Processing...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <modeInfo.icon className="h-4 w-4" />
-              {modeInfo.label}
-            </span>
+        {/* AI Action Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Stop AI Button - only show when streaming */}
+          {isStreaming && onStopAI && (
+            <Button
+              onClick={onStopAI}
+              variant="outline"
+              size="lg"
+              className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive transition-all duration-200"
+            >
+              <Square className="w-4 h-4 mr-2 fill-current" />
+              Stop
+            </Button>
           )}
-        </Button>
+          
+          {/* Run AI Button */}
+          <Button
+            onClick={onRunAI}
+            disabled={(!hasSelection && mode !== 'ideas') || isStreaming}
+            className={`transition-all duration-300 ${
+              (hasSelection || mode === 'ideas') && !isStreaming
+                ? 'bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 shadow-glow hover:shadow-lg hover:scale-105'
+                : ''
+            }`}
+            size="lg"
+          >
+            <Wand2 className="w-4 h-4 mr-2" />
+            {isStreaming ? (
+              <span className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                Processing...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <modeInfo.icon className="h-4 w-4" />
+                {modeInfo.label}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
       
       {/* Mode Description */}

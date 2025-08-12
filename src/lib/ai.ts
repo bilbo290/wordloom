@@ -13,21 +13,28 @@ import {
 
 export type AIProvider = 'lmstudio' | 'ollama'
 
-export function createAIProvider(provider: AIProvider = 'lmstudio') {
+export function createAIProvider(provider: AIProvider = 'ollama') {
+  // In development, use proxy to avoid CORS issues
+  const isDev = import.meta.env.DEV
+  
   if (provider === 'ollama') {
     return createOpenAI({
-      baseURL: import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
+      baseURL: isDev 
+        ? '/ollama/v1'  // Use proxy in development
+        : import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
       apiKey: import.meta.env.VITE_OLLAMA_API_KEY || 'ollama',
     })
   }
   
   return createOpenAI({
-    baseURL: import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1',
+    baseURL: isDev 
+      ? '/v1'  // Use proxy in development
+      : import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1',
     apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'lm-studio',
   })
 }
 
-export function getModel(provider: AIProvider = 'lmstudio') {
+export function getModel(provider: AIProvider = 'ollama') {
   if (provider === 'ollama') {
     return import.meta.env.VITE_OLLAMA_MODEL || 'gemma3:4b'
   }
@@ -36,8 +43,8 @@ export function getModel(provider: AIProvider = 'lmstudio') {
 }
 
 // Legacy exports for backward compatibility
-export const openai = createAIProvider('lmstudio')
-export const MODEL = getModel('lmstudio')
+export const openai = createAIProvider('ollama')
+export const MODEL = getModel('ollama')
 
 export const SYSTEM_MESSAGE = `You are a precise writing/editor assistant for any document (blogs, docs, notes, fiction).
 Respect the author's style, POV, tense, and constraints.

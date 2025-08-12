@@ -5,6 +5,8 @@ import { SelectionToolbar } from '@/components/editor/SelectionToolbar'
 import { Sidebar } from '@/components/Sidebar'
 import { ContextTabs } from '@/components/ContextTabs'
 import { ProjectSettingsModal } from '@/components/ProjectSettingsModal'
+import { SplitPane } from '@/components/SplitPane'
+import { AIPreviewPane } from '@/components/AIPreviewPane'
 import { useToast } from '@/components/ui/use-toast'
 import { createAIProvider, getModel, buildEnhancedPrompt, buildDocumentLevelPrompt, type AIProvider } from '@/lib/ai'
 import {
@@ -28,11 +30,14 @@ export function EditorWithSidebar() {
   const [temperature, setTemperature] = useState(0.7)
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
-  const [aiProvider, setAiProvider] = useState<AIProvider>('lmstudio')
+  const [aiProvider, setAiProvider] = useState<AIProvider>('ollama')
   const [customPrompt, setCustomPrompt] = useState('')
   const [promptHistory, setPromptHistory] = useState<string[]>([])
   const [favoritePrompts, setFavoritePrompts] = useState<string[]>([])
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false)
+  const [lastAICallTime, setLastAICallTime] = useState(0)
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
   const { toast } = useToast()
 
   // Load session and prompt data on mount
@@ -287,7 +292,32 @@ export function EditorWithSidebar() {
     return { left: leftContext, right: rightContext }
   }, [content, selectedLines])
 
+  const handleStopAI = () => {
+    if (abortController) {
+      abortController.abort()
+      setAbortController(null)
+      setIsStreaming(false)
+      toast({
+        title: 'AI Generation Stopped',
+        description: 'The current AI request has been cancelled',
+        variant: 'default'
+      })
+    }
+  }
+
   const handleRunAI = async () => {
+    // Prevent double-clicks - minimum 1 second between calls
+    const now = Date.now()
+    if (now - lastAICallTime < 1000) {
+      toast({
+        title: 'Please wait',
+        description: 'AI request already in progress',
+        variant: 'default'
+      })
+      return
+    }
+    setLastAICallTime(now)
+
     const selectedText = getSelectedText()
 
     // Check if selection is required for this mode
@@ -304,8 +334,13 @@ export function EditorWithSidebar() {
 
     if (!session) return
 
+    // Create new AbortController for this request
+    const controller = new AbortController()
+    setAbortController(controller)
+
     setIsStreaming(true)
     setPreviewContent('')
+    // Don't show preview immediately - wait for first content chunk
 
     try {
       const documentContext = session.activeFileId
@@ -361,23 +396,37 @@ export function EditorWithSidebar() {
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: userPrompt }
-        ]
+        ],
+        abortSignal: controller.signal
       })
 
       let accumulated = ''
+      let isFirstChunk = true
       for await (const chunk of textStream) {
         accumulated += chunk
         setPreviewContent(accumulated)
+        
+        // Show preview pane on first chunk
+        if (isFirstChunk) {
+          setIsPreviewVisible(true)
+          isFirstChunk = false
+        }
       }
     } catch (error) {
-      console.error('AI streaming error:', error)
-      toast({
-        title: 'AI Error',
-        description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
-        variant: 'destructive'
-      })
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was aborted, don't show error
+        console.log('AI request aborted')
+      } else {
+        console.error('AI streaming error:', error)
+        toast({
+          title: 'AI Error',
+          description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
+          variant: 'destructive'
+        })
+      }
     } finally {
       setIsStreaming(false)
+      setAbortController(null)
     }
   }
 
@@ -412,7 +461,23 @@ export function EditorWithSidebar() {
 
   // Handler for document-level AI requests from AI Assistant Panel
   const handleRunDocumentAI = async (aiMode: AIMode, customPromptText?: string) => {
+    // Prevent double-clicks - minimum 1 second between calls
+    const now = Date.now()
+    if (now - lastAICallTime < 1000) {
+      toast({
+        title: 'Please wait',
+        description: 'AI request already in progress',
+        variant: 'default'
+      })
+      return
+    }
+    setLastAICallTime(now)
+
     if (!session) return
+
+    // Create new AbortController for this request
+    const controller = new AbortController()
+    setAbortController(controller)
 
     // Set the mode and custom prompt, then run AI
     setMode(aiMode)
@@ -425,6 +490,7 @@ export function EditorWithSidebar() {
 
     setIsStreaming(true)
     setPreviewContent('')
+    // Don't show preview immediately - wait for first content chunk
 
     try {
       const documentContext = session.activeFileId
@@ -457,23 +523,37 @@ export function EditorWithSidebar() {
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: userPrompt }
-        ]
+        ],
+        abortSignal: controller.signal
       })
 
       let accumulated = ''
+      let isFirstChunk = true
       for await (const chunk of textStream) {
         accumulated += chunk
         setPreviewContent(accumulated)
+        
+        // Show preview pane on first chunk
+        if (isFirstChunk) {
+          setIsPreviewVisible(true)
+          isFirstChunk = false
+        }
       }
     } catch (error) {
-      console.error('AI streaming error:', error)
-      toast({
-        title: 'AI Error',
-        description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
-        variant: 'destructive'
-      })
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was aborted, don't show error
+        console.log('AI request aborted')
+      } else {
+        console.error('AI streaming error:', error)
+        toast({
+          title: 'AI Error',
+          description: `Failed to generate content. Is ${aiProvider === 'ollama' ? 'Ollama' : 'LM Studio'} running?`,
+          variant: 'destructive'
+        })
+      }
     } finally {
       setIsStreaming(false)
+      setAbortController(null)
     }
   }
 
@@ -507,8 +587,11 @@ export function EditorWithSidebar() {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
       handleRunAI()
+    } else if (e.key === 'Escape' && isStreaming) {
+      e.preventDefault()
+      handleStopAI()
     }
-  }, [handleRunAI])
+  }, [handleRunAI, handleStopAI, isStreaming])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -556,45 +639,71 @@ export function EditorWithSidebar() {
           onFileDelete={handleFileDelete}
         />
 
-        {/* Main editor */}
-        <div className="flex-1 flex flex-col border-r min-h-0">
-          {currentFile && (
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-muted/20 to-muted/40 backdrop-blur-sm animate-fade-in flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">
-                    {session.folders.find(f => f.id === session.activeFolderId)?.name}
-                  </span>
-                  <span className="text-muted-foreground">/</span>
-                  <span className="text-sm text-gradient-subtle font-medium">
-                    {currentFile.name}
-                  </span>
+        {/* Main content area with split pane */}
+        <div className="flex-1 min-h-0">
+          <SplitPane 
+            defaultSize="50%"
+            minSize={300}
+            disabled={!isPreviewVisible}
+          >
+            {/* Editor pane */}
+            <div className="flex flex-col border-r min-h-0 h-full">
+              {currentFile && (
+                <div className="px-4 py-3 border-b bg-gradient-to-r from-muted/20 to-muted/40 backdrop-blur-sm animate-fade-in flex-shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {session.folders.find(f => f.id === session.activeFolderId)?.name}
+                      </span>
+                      <span className="text-muted-foreground">/</span>
+                      <span className="text-sm text-gradient-subtle font-medium">
+                        {currentFile.name}
+                      </span>
+                      {isStreaming && (
+                        <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-primary/10 rounded-md">
+                          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse"></div>
+                          <span className="text-xs text-primary font-medium">AI Generating</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="px-2 py-1 bg-accent/20 rounded-md">
+                        {content.split(' ').filter(word => word.length > 0).length} words
+                      </span>
+                      <span className="px-2 py-1 bg-accent/20 rounded-md">
+                        {content.length} characters
+                      </span>
+                      <span className="px-2 py-1 bg-accent/20 rounded-md">
+                        {content.split('\n').length} lines
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="px-2 py-1 bg-accent/20 rounded-md">
-                    {content.split(' ').filter(word => word.length > 0).length} words
-                  </span>
-                  <span className="px-2 py-1 bg-accent/20 rounded-md">
-                    {content.length} characters
-                  </span>
-                  <span className="px-2 py-1 bg-accent/20 rounded-md">
-                    {content.split('\n').length} lines
-                  </span>
-                </div>
+              )}
+              <div className="flex-1 min-h-0 h-full resizable-both overflow-hidden">
+                <MonacoEditor
+                  value={content}
+                  onChange={updateFileContent}
+                  selectedLines={selectedLines}
+                  onSelectionChange={setSelectedLines}
+                />
               </div>
             </div>
-          )}
-          <div className="flex-1 min-h-0 h-full">
-            <MonacoEditor
-              value={content}
-              onChange={updateFileContent}
-              selectedLines={selectedLines}
-              onSelectionChange={setSelectedLines}
+
+            {/* AI Preview pane */}
+            <AIPreviewPane
+              previewContent={previewContent}
+              isStreaming={isStreaming}
+              onInsertPreview={handleInsertPreview}
+              onClearPreview={() => setPreviewContent('')}
+              onClose={() => setIsPreviewVisible(false)}
+              onStopGeneration={handleStopAI}
+              isVisible={isPreviewVisible}
             />
-          </div>
+          </SplitPane>
         </div>
 
-        {/* Right panel - Unified ContextTabs */}
+        {/* Right panel - Simplified ContextTabs */}
         <div className="w-96 bg-gradient-to-b from-muted/10 to-muted/5 animate-fade-in min-h-0">
           <ContextTabs
             projectContext={session.projectContext}
@@ -603,12 +712,9 @@ export function EditorWithSidebar() {
             onDocumentContextUpdate={handleDocumentContextUpdate}
             sessionContext={sessionContext}
             onSessionContextChange={setSessionContext}
-            previewContent={previewContent}
-            isStreaming={isStreaming}
-            onInsertPreview={handleInsertPreview}
-            onClearPreview={() => setPreviewContent('')}
             currentFileName={currentFile?.name}
             onRunDocumentAI={handleRunDocumentAI}
+            isStreaming={isStreaming}
             promptHistory={promptHistory}
             favoritePrompts={favoritePrompts}
             onAddToFavorites={handleAddToFavorites}
@@ -631,6 +737,7 @@ export function EditorWithSidebar() {
             onAIProviderChange={setAiProvider}
             onCustomPromptChange={setCustomPrompt}
             onRunAI={handleRunAI}
+            onStopAI={handleStopAI}
             hasSelection={selectedLines.start !== -1}
             isStreaming={isStreaming}
           />
