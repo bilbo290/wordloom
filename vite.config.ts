@@ -5,19 +5,42 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: ['monaco-editor']
+    include: ['monaco-editor'],
+    esbuildOptions: {
+      target: 'es2020',
+    }
+  },
+  build: {
+    target: 'es2020',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          monaco: ['monaco-editor', '@monaco-editor/react']
+        }
+      }
+    }
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
+  esbuild: {
+    target: 'es2020'
+  },
   // Proxy for LM Studio to avoid CORS issues
   server: {
+    host: '0.0.0.0',
+    port: 5173,
     hmr: {
-      // Use polling instead of WebSocket for HMR with Bun
-      port: 5174,
-      host: 'localhost'
+      // Use polling for file watching on Linux systems
+      usePolling: true,
+      interval: 1000,
+      port: 5174
+    },
+    watch: {
+      usePolling: true,
+      interval: 1000
     },
     proxy: {
       '/v1': {
