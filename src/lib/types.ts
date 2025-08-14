@@ -51,6 +51,7 @@ export type AIMode =
   | 'revise'         // Improve existing text
   | 'append'         // Continue existing text
   | 'continue'       // Continue story/narrative
+  | 'write-story'    // Write story from outline
   | 'ideas'          // Generate ideas and suggestions
   | 'summarize'      // Create summary
   | 'focus'          // Tighten and clarify

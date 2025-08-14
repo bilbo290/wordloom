@@ -33,6 +33,7 @@ export function EditorWithSidebar() {
   const [session, setSession] = useState<SessionState | null>(null)
   const [sessionContext, setSessionContext] = useState('')
   const [selectedLines, setSelectedLines] = useState({ start: -1, end: -1 })
+  const [selectedText, setSelectedText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
   const [promptHistory, setPromptHistory] = useState<string[]>([])
@@ -197,6 +198,7 @@ export function EditorWithSidebar() {
       }
     })
     setSelectedLines({ start: -1, end: -1 })
+    setSelectedText('')
   }
 
   const handleFolderToggle = (folderId: string) => {
@@ -331,33 +333,35 @@ export function EditorWithSidebar() {
 
   // Helper functions for context extraction
   const getSelectedText = useCallback(() => {
-    if (selectedLines.start === -1) return ''
-    const lines = content.split('\n')
-    return lines.slice(selectedLines.start, selectedLines.end + 1).join('\n')
-  }, [content, selectedLines])
+    // Use the actual selected text from Monaco Editor
+    return selectedText
+  }, [selectedText])
 
   const getContext = useCallback(() => {
-    if (selectedLines.start === -1) return { left: '', right: '' }
+    if (!selectedText) return { left: '', right: '' }
     
     const CONTEXT_CHARS = 800
-    const lines = content.split('\n')
-    const beforeLines = lines.slice(0, selectedLines.start)
-    const afterLines = lines.slice(selectedLines.end + 1)
     
-    // Get left context (up to CONTEXT_CHARS)
-    let leftContext = beforeLines.join('\n')
+    // Find the position of selected text in the content
+    const selectionStart = content.indexOf(selectedText)
+    if (selectionStart === -1) return { left: '', right: '' }
+    
+    const selectionEnd = selectionStart + selectedText.length
+    
+    // Get left context (up to CONTEXT_CHARS before selection)
+    let leftContext = content.substring(0, selectionStart)
     if (leftContext.length > CONTEXT_CHARS) {
       leftContext = '...' + leftContext.slice(-CONTEXT_CHARS)
     }
     
-    // Get right context (up to CONTEXT_CHARS)
-    let rightContext = afterLines.join('\n')
+    // Get right context (up to CONTEXT_CHARS after selection)
+    let rightContext = content.substring(selectionEnd)
     if (rightContext.length > CONTEXT_CHARS) {
       rightContext = rightContext.slice(0, CONTEXT_CHARS) + '...'
     }
     
     return { left: leftContext, right: rightContext }
-  }, [content, selectedLines])
+  }, [content, selectedText])
 
   // Handler for selection-based AI requests (Continue Story, Revise, Append, Custom)
   const handleSelectionAI = useCallback(async (mode: 'continue' | 'revise' | 'append' | 'custom', customDirection?: string) => {
@@ -467,6 +471,11 @@ export function EditorWithSidebar() {
     const customPrompt = `Continue the story from where the SELECTED passage ends. ${direction}. Write 100-200 words of new content that advances the narrative while incorporating this direction. Maintain consistent voice, POV, and tense. Output only the new continuation.`
     handleSelectionAI('custom', customPrompt)
   }, [handleSelectionAI])
+  const handleWriteStoryFromOutline = useCallback((direction: string) => {
+    // Write a full story based on the selected outline with custom direction
+    const customPrompt = `The SELECTED text is an outline or summary for a story. Write a complete, engaging story based on this outline. ${direction}. Expand the outline into vivid scenes with dialogue, descriptions, and narrative flow. Maintain consistency with any character names, settings, and plot points mentioned. Output only the story text.`
+    handleSelectionAI('custom', customPrompt)
+  }, [handleSelectionAI])
   const handleReviseSelection = useCallback(() => handleSelectionAI('revise'), [handleSelectionAI])
   const handleAppendToSelection = useCallback(() => handleSelectionAI('append'), [handleSelectionAI])
   const handleCustomRevision = useCallback((direction: string) => handleSelectionAI('custom', direction), [handleSelectionAI])
@@ -502,6 +511,7 @@ export function EditorWithSidebar() {
 
     setPreviewContent('')
     setSelectedLines({ start: -1, end: -1 })
+    setSelectedText('')
     toast({
       title: 'Applied',
       description: 'Content applied'
@@ -518,6 +528,7 @@ export function EditorWithSidebar() {
 
     setPreviewContent('')
     setSelectedLines({ start: -1, end: -1 })
+    setSelectedText('')
     toast({
       title: 'Content Appended',
       description: 'AI content added to the end of document'
@@ -555,6 +566,7 @@ export function EditorWithSidebar() {
 
     // Clear selection for document-level requests
     setSelectedLines({ start: -1, end: -1 })
+    setSelectedText('')
 
     setIsStreaming(true)
     setPreviewContent('')
@@ -825,11 +837,13 @@ export function EditorWithSidebar() {
                   onChange={updateFileContent}
                   selectedLines={selectedLines}
                   onSelectionChange={setSelectedLines}
+                  onTextSelectionChange={setSelectedText}
                   documentContext={sessionContext}
                   aiProvider={aiProvider}
                   selectedModel={selectedModel}
                   onContinueStory={handleContinueStory}
                   onContinueStoryWithDirection={handleContinueStoryWithDirection}
+                  onWriteStoryFromOutline={handleWriteStoryFromOutline}
                   onReviseSelection={handleReviseSelection}
                   onAppendToSelection={handleAppendToSelection}
                   onCustomRevision={handleCustomRevision}

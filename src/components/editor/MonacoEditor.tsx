@@ -11,11 +11,13 @@ interface MonacoEditorProps {
   onChange: (value: string) => void
   selectedLines: { start: number; end: number }
   onSelectionChange: (selection: { start: number; end: number }) => void
+  onTextSelectionChange?: (selectedText: string) => void
   documentContext?: string
   aiProvider?: AIProvider
   selectedModel?: string
   onContinueStory?: () => void
   onContinueStoryWithDirection?: (direction: string) => void
+  onWriteStoryFromOutline?: (direction: string) => void
   onReviseSelection?: () => void
   onAppendToSelection?: () => void
   onCustomRevision?: (direction: string) => void
@@ -26,11 +28,13 @@ export function MonacoEditor({
   onChange, 
   selectedLines,
   onSelectionChange,
+  onTextSelectionChange,
   documentContext,
   aiProvider = 'ollama',
   selectedModel,
   onContinueStory,
   onContinueStoryWithDirection,
+  onWriteStoryFromOutline,
   onReviseSelection,
   onAppendToSelection,
   onCustomRevision
@@ -45,6 +49,9 @@ export function MonacoEditor({
   const [customDirection, setCustomDirection] = useState('')
   const [showCustomContinue, setShowCustomContinue] = useState(false)
   const [continueDirection, setContinueDirection] = useState('')
+  const [showWriteStory, setShowWriteStory] = useState(false)
+  const [storyDirection, setStoryDirection] = useState('')
+  const [selectedText, setSelectedText] = useState('')
   
   // Debug state will be logged after hasSelection is defined
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -335,7 +342,33 @@ export function MonacoEditor({
       monacoEditor.trigger('wordloom', 'editor.action.inlineSuggest.trigger', {})
     })
 
-    // Handle cursor position changes
+    // Handle selection changes using Monaco's native API
+    monacoEditor.onDidChangeCursorSelection((e: any) => {
+      const selection = e.selection
+      const model = monacoEditor.getModel()
+      
+      if (model && selection) {
+        // Get the actual selected text using Monaco's API
+        const selectedContent = model.getValueInRange(selection)
+        setSelectedText(selectedContent)
+        
+        // Notify parent component if callback provided
+        if (onTextSelectionChange) {
+          onTextSelectionChange(selectedContent)
+        }
+        
+        // Update line-based selection for compatibility
+        const startLine = selection.startLineNumber - 1
+        const endLine = selection.endLineNumber - 1
+        
+        // Only update if selection has changed
+        if (startLine !== selectedLines.start || endLine !== selectedLines.end) {
+          onSelectionChange({ start: startLine, end: endLine })
+        }
+      }
+    })
+    
+    // Handle cursor position changes (fallback)
     monacoEditor.onDidChangeCursorPosition((e: any) => {
       const position = e.position
       const lineNumber = position.lineNumber - 1
@@ -364,7 +397,7 @@ export function MonacoEditor({
         }
       }
     })
-  }, [selectedLines, onSelectionChange, documentContext, aiProvider, selectedModel, addDebugMessage])
+  }, [selectedLines, onSelectionChange, onTextSelectionChange, documentContext, aiProvider, selectedModel, addDebugMessage])
 
   // Update line decorations when selection changes
   useEffect(() => {
@@ -426,17 +459,22 @@ export function MonacoEditor({
     }
   }, [onChange])
 
-  const hasSelection = selectedLines.start !== -1
+  const hasSelection = selectedText.length > 0
   
   // Debug state
   console.log('MonacoEditor state:', { 
     hasSelection, 
     showCustomRevision, 
     showCustomContinue,
-    onContinueStoryWithDirection: !!onContinueStoryWithDirection 
+    showWriteStory,
+    onContinueStoryWithDirection: !!onContinueStoryWithDirection,
+    onWriteStoryFromOutline: !!onWriteStoryFromOutline
   })
 
   const handleCustomRevisionClick = () => {
+    // Make sure other dialogs are closed
+    setShowCustomContinue(false)
+    setShowWriteStory(false)
     setShowCustomRevision(true)
     setCustomDirection('')
   }
@@ -458,6 +496,7 @@ export function MonacoEditor({
     console.log('Custom Continue clicked, setting showCustomContinue to true')
     // Make sure other dialogs are closed
     setShowCustomRevision(false)
+    setShowWriteStory(false)
     setShowCustomContinue(true)
     setContinueDirection('')
   }
@@ -473,6 +512,28 @@ export function MonacoEditor({
   const handleCustomContinueCancel = () => {
     setShowCustomContinue(false)
     setContinueDirection('')
+  }
+
+  const handleWriteStoryClick = () => {
+    console.log('Write Story clicked, setting showWriteStory to true')
+    // Make sure other dialogs are closed
+    setShowCustomRevision(false)
+    setShowCustomContinue(false)
+    setShowWriteStory(true)
+    setStoryDirection('')
+  }
+
+  const handleWriteStorySubmit = () => {
+    if (storyDirection.trim() && onWriteStoryFromOutline) {
+      onWriteStoryFromOutline(storyDirection.trim())
+      setShowWriteStory(false)
+      setStoryDirection('')
+    }
+  }
+
+  const handleWriteStoryCancel = () => {
+    setShowWriteStory(false)
+    setStoryDirection('')
   }
 
   const handleRevisionKeyDown = (e: React.KeyboardEvent) => {
@@ -493,6 +554,15 @@ export function MonacoEditor({
     }
   }
 
+  const handleWriteStoryKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleWriteStorySubmit()
+    } else if (e.key === 'Escape') {
+      handleWriteStoryCancel()
+    }
+  }
+
   return (
     <div className="flex-1 relative h-full w-full">
       <Editor
@@ -509,7 +579,7 @@ export function MonacoEditor({
       />
       
       {/* Floating Selection Toolbar */}
-      {hasSelection && (onContinueStory || onContinueStoryWithDirection || onReviseSelection || onAppendToSelection || onCustomRevision) && !showCustomRevision && !showCustomContinue && (
+      {hasSelection && (onContinueStory || onContinueStoryWithDirection || onWriteStoryFromOutline || onReviseSelection || onAppendToSelection || onCustomRevision) && !showCustomRevision && !showCustomContinue && !showWriteStory && (
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg p-3 animate-fade-in">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-muted-foreground mr-2">Quick Actions:</span>
@@ -536,6 +606,18 @@ export function MonacoEditor({
                 <BookOpen className="h-3 w-3" />
                 <span className="text-[10px] opacity-75">+</span>
                 Continue with Direction
+              </Button>
+            )}
+            
+            {onWriteStoryFromOutline && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleWriteStoryClick}
+                className="flex items-center gap-2 text-xs hover:bg-indigo-500/10 hover:text-indigo-600 hover:border-indigo-500/20"
+              >
+                <Wand2 className="h-3 w-3" />
+                Write Story from Outline
               </Button>
             )}
             
@@ -661,6 +743,55 @@ export function MonacoEditor({
                 size="sm"
                 variant="outline"
                 onClick={handleCustomContinueCancel}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Write Story from Outline Input */}
+      {hasSelection && showWriteStory && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-indigo-50/95 dark:bg-indigo-950/95 backdrop-blur-sm border-2 border-indigo-200 dark:border-indigo-800 rounded-lg shadow-lg p-4 animate-fade-in w-96 z-50">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">Story Writing Direction</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleWriteStoryCancel}
+                className="h-6 w-6 p-0 hover:bg-red-500/10 hover:text-red-600"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Transform your outline into a full story with specific guidance:
+            </div>
+            <Input
+              placeholder="e.g., make it a thriller, add humor, dark and mysterious tone, young adult style..."
+              value={storyDirection}
+              onChange={(e) => setStoryDirection(e.target.value)}
+              onKeyDown={handleWriteStoryKeyDown}
+              className="text-sm"
+              autoFocus
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={handleWriteStorySubmit}
+                disabled={!storyDirection.trim()}
+                className="flex items-center gap-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                <Wand2 className="h-3 w-3" />
+                Write Story
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleWriteStoryCancel}
                 className="text-xs"
               >
                 Cancel
