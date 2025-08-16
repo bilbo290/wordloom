@@ -1,9 +1,10 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import { EditorWithSidebar } from '@/routes/EditorWithSidebar'
 import { Settings } from '@/routes/Settings'
+import { StoryWriterMode } from '@/routes/StoryWriterMode'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
-import { Settings as SettingsIcon, Sparkles } from 'lucide-react'
+import { Settings as SettingsIcon, Sparkles, BookOpen } from 'lucide-react'
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,6 +26,12 @@ function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </Link>
           <div className="flex items-center gap-3">
+            <Link to="/story-writer">
+              <Button variant="ghost" size="sm" className="hover:bg-accent/50 transition-all duration-200 hover:scale-105">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Story Writer
+              </Button>
+            </Link>
             <Link to="/settings">
               <Button variant="ghost" size="icon" className="hover:bg-accent/50 transition-all duration-200 hover:scale-105">
                 <SettingsIcon className="h-5 w-5" />
@@ -48,6 +55,7 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<EditorWithSidebar />} />
+          <Route path="/story-writer" element={<StoryWriterMode />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>

@@ -57,6 +57,13 @@ export type AIMode =
   | 'focus'          // Tighten and clarify
   | 'enhance'        // Add details and descriptions
   | 'custom'         // User-defined prompt
+  // Story Writer Mode specific
+  | 'discuss-story'  // Discuss story concepts
+  | 'generate-outline' // Generate story outline
+  | 'write-chapter'  // Write a full chapter
+  | 'write-scene'    // Write a specific scene
+  | 'develop-character' // Develop character details
+  | 'build-world'    // World-building assistance
 
 export interface CustomPromptRequest {
   mode: AIMode

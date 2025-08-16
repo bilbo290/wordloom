@@ -298,7 +298,7 @@ Rules:
 
       const startTime = Date.now()
       const { textStream } = await streamText({
-        model: provider.chat(model),
+        model: provider(model),
         temperature: this.options.temperature,
         messages: [
           { role: 'system', content: systemMessage },

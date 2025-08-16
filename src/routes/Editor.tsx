@@ -95,7 +95,7 @@ export function Editor() {
       const model = getModel(aiProvider)
       
       const { textStream } = await streamText({
-        model: provider.chat(model),
+        model: provider(model),
         temperature,
         messages: [
           { role: 'system', content: SYSTEM_MESSAGE },

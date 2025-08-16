@@ -42,7 +42,7 @@ export function EditorWithSidebar() {
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
   const [lastAICallTime, setLastAICallTime] = useState(0)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
-  const [aiProvider, setAIProvider] = useState<AIProvider>('ollama')
+  const [aiProvider, setAIProvider] = useState<AIProvider>('lmstudio')
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [lastAIRequest, setLastAIRequest] = useState<{
     type: 'selection' | 'document'
@@ -434,7 +434,7 @@ export function EditorWithSidebar() {
       const model = selectedModel || getModel(aiProvider)
 
       const { textStream } = await streamText({
-        model: provider.chat(model),
+        model: provider(model),
         temperature: 0.7,
         messages: [
           { role: 'system', content: systemMessage },
@@ -622,7 +622,7 @@ export function EditorWithSidebar() {
       const model = selectedModel || getModel(aiProvider)
 
       const { textStream } = await streamText({
-        model: provider.chat(model),
+        model: provider(model),
         temperature: 0.7, // Default temperature since toolbar is removed
         messages: [
           { role: 'system', content: systemMessage },

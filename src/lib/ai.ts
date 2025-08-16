@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { ProjectContext, DocumentContext, AIMode, PromptTemplate, SmartContextResult } from './types'
 import { getSmartContextManager } from './smart-context'
 import { 
@@ -9,33 +9,44 @@ import {
   FileText, 
   Target, 
   Sparkles, 
-  Zap 
+  Zap,
+  MessageSquare,
+  PenTool,
+  Users,
+  Globe
 } from 'lucide-react'
 
 export type AIProvider = 'lmstudio' | 'ollama'
 
-export function createAIProvider(provider: AIProvider = 'ollama') {
+export function createAIProvider(provider: AIProvider = 'lmstudio') {
   // In development, use proxy to avoid CORS issues
   const isDev = import.meta.env.DEV
   
   if (provider === 'ollama') {
-    return createOpenAI({
-      baseURL: isDev 
-        ? '/ollama/v1'  // Use proxy in development
-        : import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
+    const baseURL = isDev 
+      ? `${window.location.origin}/ollama/v1`  // Use full URL for proxy in development
+      : import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1'
+    
+    return createOpenAICompatible({
+      name: 'ollama',
+      baseURL,
       apiKey: import.meta.env.VITE_OLLAMA_API_KEY || 'ollama',
     })
   }
   
-  return createOpenAI({
-    baseURL: isDev 
-      ? '/v1'  // Use proxy in development
-      : import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1',
+  // LM Studio provider (default)
+  const baseURL = isDev 
+    ? `${window.location.origin}/v1`  // Use full URL for proxy in development
+    : import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
+  
+  return createOpenAICompatible({
+    name: 'lmstudio',
+    baseURL,
     apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'lm-studio',
   })
 }
 
-export function getModel(provider: AIProvider = 'ollama') {
+export function getModel(provider: AIProvider = 'lmstudio') {
   if (provider === 'ollama') {
     return import.meta.env.VITE_OLLAMA_MODEL || 'gemma3:4b'
   }
@@ -44,8 +55,8 @@ export function getModel(provider: AIProvider = 'ollama') {
 }
 
 // Legacy exports for backward compatibility
-export const openai = createAIProvider('ollama')
-export const MODEL = getModel('ollama')
+export const openai = createAIProvider('lmstudio')
+export const MODEL = getModel('lmstudio')
 
 export const SYSTEM_MESSAGE = `You are a precise writing/editor assistant for any document (blogs, docs, notes, fiction).
 Respect the author's style, POV, tense, and constraints.
@@ -291,6 +302,19 @@ function getTaskInstruction(mode: AIMode, customPrompt?: string): string {
       return 'Tighten and clarify the SELECTED passage. Remove unnecessary words, improve sentence structure, and make the writing more precise and impactful. Preserve the original meaning and tone. Output the focused passage ONLY.'
     case 'enhance':
       return 'Enhance the SELECTED passage by adding vivid details, sensory descriptions, and rich imagery. Make the writing more engaging and immersive while maintaining the original structure and meaning. Output the enhanced passage ONLY.'
+    // Story Writer Mode specific
+    case 'discuss-story':
+      return 'Act as a friendly story collaborator and interviewer. Ask ONE focused question at a time to help develop the story. Keep responses to 1-2 sentences max. Focus on one specific aspect: either plot, character, setting, or theme. Be conversational and encouraging.'
+    case 'generate-outline':
+      return 'Create a detailed story outline with chapters and scenes. Include plot structure, character arcs, and key story beats. Format as a clear, organized outline.'
+    case 'write-chapter':
+      return 'Write a full chapter based on the provided outline and context. Include vivid descriptions, compelling dialogue, and advance the plot according to the chapter summary.'
+    case 'write-scene':
+      return 'Write a complete scene based on the scene outline. Focus on the specific story beats, character interactions, and mood described in the scene summary.'
+    case 'develop-character':
+      return 'Develop detailed character profiles including personality, backstory, motivations, and character arc. Provide rich, compelling character details that serve the story.'
+    case 'build-world':
+      return 'Expand the world-building with rich details about setting, culture, history, and atmosphere. Create an immersive world that supports the story themes and plot.'
     default:
       return 'Improve the SELECTED passage while preserving its original meaning and tone.'
   }
@@ -511,7 +535,14 @@ export function getModeInfo(mode: AIMode) {
     summarize: { label: 'Summarize', icon: FileText, description: 'Create a summary' },
     focus: { label: 'Focus & Clarify', icon: Target, description: 'Tighten the writing' },
     enhance: { label: 'Add Details', icon: Sparkles, description: 'Enrich with descriptions' },
-    custom: { label: 'Custom Prompt', icon: Zap, description: 'Your own instructions' }
+    custom: { label: 'Custom Prompt', icon: Zap, description: 'Your own instructions' },
+    // Story Writer Mode specific
+    'discuss-story': { label: 'Discuss Story', icon: MessageSquare, description: 'Collaborate on story concepts' },
+    'generate-outline': { label: 'Generate Outline', icon: FileText, description: 'Create story structure' },
+    'write-chapter': { label: 'Write Chapter', icon: BookOpen, description: 'Write full chapter content' },
+    'write-scene': { label: 'Write Scene', icon: PenTool, description: 'Craft specific scenes' },
+    'develop-character': { label: 'Develop Character', icon: Users, description: 'Build character profiles' },
+    'build-world': { label: 'Build World', icon: Globe, description: 'Expand world-building' }
   }
   
   return modes[mode] || modes.revise

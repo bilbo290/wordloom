@@ -38,6 +38,24 @@ const CollapsibleContent = ({ children }: CollapsibleContentProps) => {
   return <div>{children}</div>
 }
 
-const CollapsibleTrigger = CollapsibleContent // Not used but exported for completeness
+interface CollapsibleTriggerProps {
+  children: ReactNode
+  className?: string
+}
+
+const CollapsibleTrigger = ({ children, className }: CollapsibleTriggerProps) => {
+  const context = useContext(CollapsibleContext)
+  if (!context) throw new Error('CollapsibleTrigger must be used within Collapsible')
+  
+  return (
+    <button 
+      onClick={() => context.onOpenChange(!context.open)}
+      className={className}
+      type="button"
+    >
+      {children}
+    </button>
+  )
+}
 
 export { Collapsible, CollapsibleTrigger, CollapsibleContent }

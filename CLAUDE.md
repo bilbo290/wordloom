@@ -45,7 +45,7 @@ Components: shadcn/ui (Radix + Tailwind; local components).
 
 Icons: lucide-react.
 
-AI: Vercel AI SDK → ai, @ai-sdk/openai.
+AI: Vercel AI SDK → ai, @ai-sdk/openai-compatible-compatible.
 
 Model host: LM Studio or Ollama (OpenAI-compatible local servers).
 
@@ -430,19 +430,21 @@ File: src/lib/ai.ts
 **Multi-Provider System:**
 
 ```typescript
-import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 export type AIProvider = 'lmstudio' | 'ollama'
 
 export function createAIProvider(provider: AIProvider = 'lmstudio') {
   if (provider === 'ollama') {
-    return createOpenAI({
+    return createOpenAICompatible({
+      name: 'ollama',
       baseURL: import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
       apiKey: import.meta.env.VITE_OLLAMA_API_KEY || 'ollama',
     })
   }
   
-  return createOpenAI({
+  return createOpenAICompatible({
+    name: 'lmstudio',
     baseURL: import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1',
     apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'lm-studio',
   })
@@ -471,7 +473,7 @@ const provider = createAIProvider('ollama') // or 'lmstudio'
 const model = getModel('ollama') // or 'lmstudio'
 
 const { textStream } = streamText({
-  model: provider.chat(model),
+  model: provider(model),
   temperature, // number
   messages: [
     { role: 'system', content: systemMessage },
@@ -565,7 +567,7 @@ typescript, vite
 
 tailwindcss, postcss, autoprefixer
 
-ai, @ai-sdk/openai
+ai, @ai-sdk/openai-compatible
 
 clsx, class-variance-authority, tailwind-merge
 
@@ -685,7 +687,7 @@ TECH STACK
 - React Router (routes: `/` and `/settings`)
 - Tailwind CSS
 - shadcn/ui (Radix + Tailwind components; install locally, not CDN)
-- Vercel AI SDK (`ai` + `@ai-sdk/openai`) configured to talk to **LM Studio** (OpenAI-compatible)
+- Vercel AI SDK (`ai` + `@ai-sdk/openai-compatible`) configured to talk to **LM Studio** (OpenAI-compatible)
 - Dark theme as default, with option to switch to light mode (persistent via localStorage or similar)
 
 AI BACKEND
@@ -694,7 +696,7 @@ AI BACKEND
   - `VITE_OPENAI_BASE_URL` (default above)
   - `VITE_OPENAI_API_KEY` (dummy “lm-studio” if needed)
   - `VITE_OPENAI_MODEL` (e.g., “lmstudio” or actual model string)
-- Implement provider with `createOpenAI({ baseURL, apiKey })`
+- Implement provider with `createOpenAICompatible({ name, baseURL, apiKey })`
 - Use `streamText()` to stream completions
 
 CORE IDEA

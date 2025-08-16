@@ -20,7 +20,7 @@ export function Settings() {
   const [isImporting, setIsImporting] = useState(false)
   const [currentPath, setCurrentPath] = useState('')
   const [fsSupported, setFsSupported] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('ollama')
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('lmstudio')
   const [hasLoaded, setHasLoaded] = useState(false)
   const [autocompleteSettings, setAutocompleteSettings] = useState<Partial<AutocompleteOptions>>({
     enabled: true,
@@ -168,7 +168,7 @@ export function Settings() {
       const model = getModel(selectedProvider)
       
       const { textStream } = await streamText({
-        model: aiProvider.chat(model),
+        model: aiProvider(model),
         temperature: 0.7,
         messages: [
           { role: 'system', content: SYSTEM_MESSAGE },
