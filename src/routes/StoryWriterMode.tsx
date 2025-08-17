@@ -20,6 +20,7 @@ import {
 import { StoryChat } from '@/components/story/StoryChat'
 import { StoryOutlinePanel } from '@/components/story/StoryOutlinePanel'
 import { ChapterWorkspace } from '@/components/story/ChapterWorkspace'
+import { SceneWriting } from '@/components/story/SceneWriting'
 import { StoryProgressTracker } from '@/components/story/StoryProgressTracker'
 import { StoryProjectSettings } from '@/components/story/StoryProjectSettings'
 import { NewProjectDialog } from '@/components/story/NewProjectDialog'
@@ -999,7 +1000,7 @@ Provide 3-5 specific recommendations for developing this scene further. Rate pri
 
         {/* Center - Main Workspace */}
         <div className="flex-1 flex flex-col min-w-0">
-          {state.activePhase === 'chapter' || state.activePhase === 'scene' ? (
+          {state.activePhase === 'chapter' ? (
             <ChapterWorkspace
               project={state.activeProject!}
               activeChapterId={state.activeChapterId}
@@ -1019,6 +1020,26 @@ Provide 3-5 specific recommendations for developing this scene further. Rate pri
                 })
               }}
               onSynthesizeScene={synthesizeScene}
+            />
+          ) : state.activePhase === 'scene' ? (
+            <SceneWriting
+              project={state.activeProject!}
+              activeChapterId={state.activeChapterId}
+              activeSceneId={state.activeSceneId}
+              onChapterSelect={selectChapter}
+              onSceneSelect={selectScene}
+              onUpdateChapter={(chapter) => {
+                if (!state.activeProject) return
+                const updatedChapters = state.activeProject.outline.chapters.map(ch =>
+                  ch.id === chapter.id ? chapter : ch
+                )
+                updateActiveProject({
+                  outline: {
+                    ...state.activeProject.outline,
+                    chapters: updatedChapters
+                  }
+                })
+              }}
             />
           ) : state.activePhase === 'ideation' || state.activePhase === 'worldbuilding' || state.activePhase === 'characters' || state.activePhase === 'outline' ? (
             <div className="flex-1 p-6 overflow-auto">
