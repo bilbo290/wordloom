@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import MonacoEditor from '@monaco-editor/react'
 import { 
   BookOpen, 
@@ -19,7 +20,11 @@ import {
   ChevronRight,
   Sparkles,
   Edit3,
-  Download
+  Download,
+  Camera,
+  MessageSquare,
+  Layout,
+  Layers
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { 
@@ -30,6 +35,8 @@ import type {
 import { useToast } from '@/components/ui/use-toast'
 import { createFile, createFolder } from '@/lib/session'
 import { useTheme } from '@/lib/theme'
+import { SceneStoryboard } from './SceneStoryboard'
+import { SceneChat } from './SceneChat'
 
 interface ChapterWorkspaceProps {
   project: StoryProject
@@ -38,6 +45,7 @@ interface ChapterWorkspaceProps {
   onChapterSelect: (chapterId: string) => void
   onSceneSelect: (sceneId: string) => void
   onUpdateChapter: (chapter: ChapterOutline) => void
+  onSynthesizeScene?: (scene: SceneOutline) => Promise<void>
 }
 
 export function ChapterWorkspace({
@@ -46,7 +54,8 @@ export function ChapterWorkspace({
   activeSceneId,
   onChapterSelect,
   onSceneSelect,
-  onUpdateChapter
+  onUpdateChapter,
+  onSynthesizeScene
 }: ChapterWorkspaceProps) {
   const { theme } = useTheme()
   const { toast } = useToast()
@@ -55,6 +64,7 @@ export function ChapterWorkspace({
   const [sceneNotes, setSceneNotes] = useState('')
   const [wordCount, setWordCount] = useState(0)
   const [isDirty, setIsDirty] = useState(false)
+  const [activeTab, setActiveTab] = useState('storyboard')
 
   // Get active chapter and scene
   const activeChapter = project.outline.chapters.find(ch => ch.id === activeChapterId)
@@ -182,7 +192,7 @@ export function ChapterWorkspace({
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="border-b px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             {/* Navigation */}
             <div className="flex items-center gap-1">
@@ -260,130 +270,260 @@ export function ChapterWorkspace({
         </div>
 
         {/* Context Bar */}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          {activeScene?.setting && (
-            <div className="flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              <span>{activeScene.setting}</span>
-            </div>
-          )}
-          
-          {getCurrentCharacters().length > 0 && (
-            <div className="flex items-center gap-1">
-              <Users className="h-3 w-3" />
-              <span>{getCurrentCharacters().map(c => c.name).join(', ')}</span>
-            </div>
-          )}
-          
-          {activeScene?.mood && (
-            <div className="flex items-center gap-1">
-              <Sparkles className="h-3 w-3" />
-              <span>{activeScene.mood}</span>
-            </div>
-          )}
-        </div>
+        {activeScene && (
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            {activeScene.setting && (
+              <div className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                <span>{activeScene.setting}</span>
+              </div>
+            )}
+            
+            {getCurrentCharacters().length > 0 && (
+              <div className="flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                <span>{getCurrentCharacters().map(c => c.name).join(', ')}</span>
+              </div>
+            )}
+            
+            {activeScene.mood && (
+              <div className="flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                <span>{activeScene.mood}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Main Editor Area */}
+      {/* Main Content with Tabs */}
       <div className="flex-1 flex">
-        {/* Editor */}
-        <div className="flex-1 flex flex-col">
-          <div className="flex-1 min-h-0">
-            <MonacoEditor
-              value={content}
-              onChange={(value) => {
-                setContent(value || '')
-                setIsDirty(true)
-              }}
-              language="markdown"
-              theme={theme === 'dark' ? 'vs-dark' : 'light'}
-              options={{
-                minimap: { enabled: false },
-                wordWrap: 'on',
-                lineNumbers: 'off',
-                fontSize: 16,
-                fontFamily: 'Georgia, serif',
-                lineHeight: 28,
-                padding: { top: 20, bottom: 20 },
-                scrollBeyondLastLine: false,
-                renderLineHighlight: 'none',
-                occurrencesHighlight: false,
-                selectionHighlight: false,
-                hideCursorInOverviewRuler: true,
-                overviewRulerBorder: false,
-                scrollbar: {
-                  vertical: 'auto',
-                  horizontal: 'hidden'
-                }
-              }}
-            />
-          </div>
+        {/* Left Panel - Storyboard/Development */}
+        <div className="w-80 border-r">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
+            <div className="border-b px-3 py-2">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="storyboard" className="flex items-center gap-2">
+                  <Camera className="h-4 w-4" />
+                  <span className="hidden lg:inline">Storyboard</span>
+                </TabsTrigger>
+                <TabsTrigger value="scene-chat" className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="hidden lg:inline">Scene Chat</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            
+            <TabsContent value="storyboard" className="flex-1 mt-0 min-h-0 flex flex-col">
+              <SceneStoryboard
+                chapter={activeChapter}
+                activeSceneId={activeSceneId}
+                onSceneSelect={onSceneSelect}
+                onUpdateChapter={onUpdateChapter}
+              />
+            </TabsContent>
+            
+            <TabsContent value="scene-chat" className="flex-1 mt-0 min-h-0 flex flex-col">
+              {activeScene ? (
+                <SceneChat
+                  project={project}
+                  scene={activeScene}
+                  onUpdateScene={(updatedScene) => {
+                    const updatedScenes = activeChapter.scenes.map(s =>
+                      s.id === updatedScene.id ? updatedScene : s
+                    )
+                    onUpdateChapter({
+                      ...activeChapter,
+                      scenes: updatedScenes
+                    })
+                  }}
+                  onSynthesizeScene={onSynthesizeScene}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center p-6">
+                  <Card className="text-center border-dashed">
+                    <CardContent className="p-6">
+                      <MessageSquare className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                      <h4 className="font-medium mb-2">Select a Scene</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Choose a scene from the storyboard to start developing it with AI assistance
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
 
-        {/* Side Panel */}
-        <div className="w-80 border-l flex flex-col">
-          {/* Scene/Chapter Info */}
-          <Card className="m-3">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                {activeScene ? 'Scene' : 'Chapter'} Purpose
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                {activeScene?.purpose || activeChapter.purpose || 'No purpose defined'}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Summary/Notes */}
-          <Card className="mx-3 mb-3 flex-1">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                {activeScene ? 'Scene Summary' : 'Chapter Notes'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={activeScene ? sceneNotes : chapterNotes}
-                onChange={(e) => {
-                  if (activeScene) {
-                    setSceneNotes(e.target.value)
-                  } else {
-                    setChapterNotes(e.target.value)
-                  }
+        {/* Center - Editor */}
+        <div className="flex-1 flex flex-col">
+          {activeScene ? (
+            <div className="flex-1 min-h-0">
+              <MonacoEditor
+                value={content}
+                onChange={(value) => {
+                  setContent(value || '')
                   setIsDirty(true)
                 }}
-                placeholder={`Add ${activeScene ? 'scene' : 'chapter'} notes...`}
-                className="min-h-[100px] resize-none"
+                language="markdown"
+                theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                options={{
+                  minimap: { enabled: false },
+                  wordWrap: 'on',
+                  lineNumbers: 'off',
+                  fontSize: 16,
+                  fontFamily: 'Georgia, serif',
+                  lineHeight: 28,
+                  padding: { top: 20, bottom: 20 },
+                  scrollBeyondLastLine: false,
+                  renderLineHighlight: 'none',
+                  occurrencesHighlight: false,
+                  selectionHighlight: false,
+                  hideCursorInOverviewRuler: true,
+                  overviewRulerBorder: false,
+                  scrollbar: {
+                    vertical: 'auto',
+                    horizontal: 'hidden'
+                  }
+                }}
               />
-            </CardContent>
-          </Card>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <Card className="w-full max-w-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Layout className="h-5 w-5" />
+                    Chapter Development
+                  </CardTitle>
+                  <CardDescription>
+                    Plan your scenes before writing
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 border border-dashed rounded-lg">
+                      <Camera className="h-8 w-8 mx-auto mb-2 text-primary" />
+                      <h4 className="font-medium mb-1">Storyboard</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Create and organize scene cards
+                      </p>
+                    </div>
+                    <div className="text-center p-4 border border-dashed rounded-lg">
+                      <MessageSquare className="h-8 w-8 mx-auto mb-2 text-primary" />
+                      <h4 className="font-medium mb-1">Scene Chat</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Develop scenes with AI
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Start by creating scenes in the storyboard, then select one to begin writing.
+                    </p>
+                    <Button onClick={() => setActiveTab('storyboard')}>
+                      <Camera className="h-4 w-4 mr-2" />
+                      Open Storyboard
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
 
-          {/* Story Beats (for scenes) */}
-          {activeScene && activeScene.beats.length > 0 && (
-            <Card className="mx-3 mb-3">
+        {/* Right Panel - Scene Details */}
+        {activeScene && (
+          <div className="w-80 border-l flex flex-col">
+            {/* Scene Info */}
+            <Card className="m-3">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Edit3 className="h-4 w-4" />
-                  Story Beats
+                  <Target className="h-4 w-4" />
+                  Scene Purpose
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-1">
-                  {activeScene.beats.map((beat, index) => (
-                    <li key={beat.id} className="flex items-start gap-2 text-sm">
-                      <span className="text-muted-foreground">{index + 1}.</span>
-                      <span>{beat.description}</span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="text-sm text-muted-foreground">
+                  {activeScene.purpose || 'No purpose defined'}
+                </p>
               </CardContent>
             </Card>
-          )}
-        </div>
+
+            {/* Scene Notes */}
+            <Card className="mx-3 mb-3 flex-1">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Scene Notes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={sceneNotes}
+                  onChange={(e) => {
+                    setSceneNotes(e.target.value)
+                    setIsDirty(true)
+                  }}
+                  placeholder="Add scene notes..."
+                  className="min-h-[100px] resize-none"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Story Beats */}
+            {activeScene.beats.length > 0 && (
+              <Card className="mx-3 mb-3">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Edit3 className="h-4 w-4" />
+                    Story Beats
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-1">
+                    {activeScene.beats.map((beat, index) => (
+                      <li key={beat.id} className="flex items-start gap-2 text-sm">
+                        <span className="text-muted-foreground">{index + 1}.</span>
+                        <span>{beat.description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Synthesis Results */}
+            {activeScene.synthesisData && (
+              <Card className="mx-3 mb-3">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    AI Synthesis
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {activeScene.synthesisData.sceneOverview}
+                  </p>
+                  {activeScene.synthesisData.recommendations.length > 0 && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Top Recommendations</label>
+                      {activeScene.synthesisData.recommendations.slice(0, 2).map((rec, index) => (
+                        <div key={index} className="text-xs p-2 bg-muted rounded">
+                          <div className="font-medium">{rec.area}</div>
+                          <div className="text-muted-foreground">{rec.suggestion}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
