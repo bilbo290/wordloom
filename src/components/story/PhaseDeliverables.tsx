@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -36,6 +36,35 @@ export function PhaseDeliverables({
 }: PhaseDeliverablesProps) {
   const [isGenerating, setIsGenerating] = useState(false)
 
+  // Memoized synthesis check to ensure reactivity
+  const canSynthesizeCurrentPhase = useMemo(() => {
+    // Ensure we have the most recent chat history
+    const chatHistory = project.chatHistory || []
+    const phaseMessages = chatHistory.filter(msg => 
+      msg.phase === currentPhase && msg.role === 'user'
+    )
+    const result = phaseMessages.length >= 2
+    console.log(`[PhaseDeliverables] canSynthesize check for ${currentPhase}:`, {
+      phaseMessages: phaseMessages.length,
+      result,
+      chatHistoryLength: chatHistory.length,
+      allMessagePhases: chatHistory.map(msg => `${msg.role}:${msg.phase || 'NO_PHASE'}`),
+      userMessagesForCurrentPhase: phaseMessages.length,
+      currentPhase,
+      projectId: project.id
+    })
+    return result
+  }, [project.chatHistory, project.id, currentPhase])
+
+  // Debug effect to track when project changes
+  useEffect(() => {
+    console.log(`[PhaseDeliverables] Project updated:`, {
+      chatHistoryLength: project.chatHistory.length,
+      currentPhase,
+      canSynthesize: canSynthesizeCurrentPhase
+    })
+  }, [project.chatHistory, currentPhase, canSynthesizeCurrentPhase])
+
   const getPhaseIcon = (phase: StoryPhase) => {
     switch (phase) {
       case 'ideation': return <Sparkles className="h-4 w-4" />
@@ -56,13 +85,6 @@ export function PhaseDeliverables({
     }
   }
 
-  const canSynthesize = (phase: StoryPhase) => {
-    // Check if there's enough chat history for this phase
-    const phaseMessages = project.chatHistory.filter(msg => 
-      msg.phase === phase && msg.role === 'user'
-    )
-    return phaseMessages.length >= 2 // Need at least 2 user messages
-  }
 
   const hasDeliverable = (phase: StoryPhase) => {
     return project.phaseDeliverables?.[phase] !== undefined
@@ -75,72 +97,397 @@ export function PhaseDeliverables({
   }
 
   const renderIdeationOutput = (output: IdeationOutput) => (
-    <div className="space-y-4">
-      <div>
-        <h4 className="font-semibold text-sm mb-2">Core Premise</h4>
-        <p className="text-sm text-muted-foreground">{output.corePremise}</p>
-      </div>
-      
-      <div>
-        <h4 className="font-semibold text-sm mb-2">Central Conflict</h4>
-        <p className="text-sm text-muted-foreground">{output.centralConflict}</p>
-      </div>
-      
-      <div>
-        <h4 className="font-semibold text-sm mb-2">Key Themes</h4>
-        <div className="flex flex-wrap gap-1">
-          {output.themes.map((theme, index) => (
-            <Badge key={index} variant="secondary" className="text-xs">
-              {theme}
-            </Badge>
-          ))}
+    <div className="space-y-6">
+      {/* Synthesized Ideas */}
+      <div className="space-y-4">
+        <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Synthesized Story Elements
+        </h4>
+        
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Core Premise</h5>
+          <p className="text-sm text-muted-foreground">{output.synthesizedIdea.corePremise}</p>
+        </div>
+        
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Central Conflict</h5>
+          <p className="text-sm text-muted-foreground">{output.synthesizedIdea.centralConflict}</p>
+        </div>
+        
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Key Themes</h5>
+          <div className="flex flex-wrap gap-1">
+            {output.synthesizedIdea.themes.map((theme, index) => (
+              <Badge key={index} variant="secondary" className="text-xs">
+                {theme}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Unique Elements</h5>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            {output.synthesizedIdea.uniqueElements.map((element, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {element}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
 
-      <div>
-        <h4 className="font-semibold text-sm mb-2">Unique Elements</h4>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          {output.uniqueElements.map((element, index) => (
-            <li key={index} className="flex items-start gap-2">
-              <span className="text-primary">•</span>
-              {element}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  )
-
-  const renderWorldBuildingOutput = (output: WorldBuildingOutput) => (
-    <div className="space-y-4">
-      <div>
-        <h4 className="font-semibold text-sm mb-2">World Overview</h4>
-        <p className="text-sm text-muted-foreground">{output.worldOverview}</p>
-      </div>
-      
-      <div>
-        <h4 className="font-semibold text-sm mb-2">Key Rules & Systems</h4>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          {output.worldRules.map((rule, index) => (
-            <li key={index} className="flex items-start gap-2">
-              <span className="text-primary">•</span>
-              {rule}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div>
-        <h4 className="font-semibold text-sm mb-2">Important Locations</h4>
+      {/* Recommendations */}
+      <div className="space-y-3">
+        <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-amber-500" />
+          Development Recommendations
+        </h4>
+        
         <div className="space-y-2">
-          {output.keyLocations.map((location, index) => (
-            <div key={index} className="p-2 bg-muted/30 rounded text-xs">
-              <div className="font-medium">{location.name}</div>
-              <div className="text-muted-foreground">{location.description}</div>
+          {output.recommendations.map((rec, index) => (
+            <div key={index} className="p-3 bg-muted/50 rounded-lg border">
+              <div className="flex items-start justify-between mb-2">
+                <span className="font-medium text-sm">{rec.area}</span>
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}
+                    className="text-xs"
+                  >
+                    {rec.priority}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    Score: {rec.score}/10
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">{rec.suggestion}</p>
             </div>
           ))}
         </div>
       </div>
+    </div>
+  )
+
+  const renderCharacterOutput = (output: CharacterDevelopmentOutput) => (
+    <div className="space-y-6">
+      {/* Main Characters */}
+      <div className="space-y-4">
+        <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+          <Users className="h-4 w-4 text-primary" />
+          Main Characters
+        </h4>
+        
+        <div className="space-y-3">
+          {output.mainCharacters.map((character, index) => (
+            <div key={index} className="p-4 bg-muted/30 rounded-lg border">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h5 className="font-semibold text-sm">{character.name}</h5>
+                  <Badge variant="outline" className="text-xs mt-1">
+                    {character.role}
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-2">{character.description}</p>
+              {character.motivation && (
+                <div className="text-sm">
+                  <span className="font-medium">Motivation:</span> {character.motivation}
+                </div>
+              )}
+              {character.arc && (
+                <div className="text-sm">
+                  <span className="font-medium">Arc:</span> {character.arc}
+                </div>
+              )}
+              {character.traits.length > 0 && (
+                <div className="mt-2">
+                  <span className="font-medium text-sm">Traits:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {character.traits.map((trait, traitIndex) => (
+                      <Badge key={traitIndex} variant="secondary" className="text-xs">
+                        {trait}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Relationship Dynamics */}
+      {output.relationshipDynamics.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3">Relationship Dynamics</h4>
+          <ul className="text-sm text-muted-foreground space-y-2">
+            {output.relationshipDynamics.map((dynamic, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {dynamic}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Character Arcs */}
+      {output.characterArcs.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3">Character Development Arcs</h4>
+          <ul className="text-sm text-muted-foreground space-y-2">
+            {output.characterArcs.map((arc, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {arc}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {output.recommendations && output.recommendations.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            Development Recommendations
+          </h4>
+          
+          <div className="space-y-2">
+            {output.recommendations.map((rec, index) => (
+              <div key={index} className="p-3 bg-muted/50 rounded-lg border">
+                <div className="flex items-start justify-between mb-2">
+                  <span className="font-medium text-sm">{rec.area}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}
+                      className="text-xs"
+                    >
+                      {rec.priority}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Score: {rec.score}/10
+                    </span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{rec.suggestion}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderWorldBuildingOutput = (output: WorldBuildingOutput) => (
+    <div className="space-y-6">
+      {/* Synthesized World */}
+      <div className="space-y-4">
+        <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+          <Globe className="h-4 w-4 text-primary" />
+          Synthesized World Elements
+        </h4>
+        
+        <div>
+          <h5 className="font-semibold text-sm mb-2">World Overview</h5>
+          <p className="text-sm text-muted-foreground">{output.synthesizedIdea.worldOverview}</p>
+        </div>
+        
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Key Rules & Systems</h5>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            {output.synthesizedIdea.worldRules.map((rule, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {rule}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Important Locations</h5>
+          <div className="space-y-2">
+            {output.synthesizedIdea.keyLocations.map((location, index) => (
+              <div key={index} className="p-2 bg-muted/30 rounded text-xs">
+                <div className="font-medium">{location.name}</div>
+                <div className="text-muted-foreground">{location.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Recommendations */}
+      <div className="space-y-3">
+        <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-amber-500" />
+          Development Recommendations
+        </h4>
+        
+        <div className="space-y-2">
+          {output.recommendations.map((rec, index) => (
+            <div key={index} className="p-3 bg-muted/50 rounded-lg border">
+              <div className="flex items-start justify-between mb-2">
+                <span className="font-medium text-sm">{rec.area}</span>
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}
+                    className="text-xs"
+                  >
+                    {rec.priority}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    Score: {rec.score}/10
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">{rec.suggestion}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderOutlineOutput = (output: OutlineOutput) => (
+    <div className="space-y-6">
+      {/* Plot Structure */}
+      <div className="space-y-4">
+        <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+          <FileText className="h-4 w-4 text-primary" />
+          Plot Structure
+        </h4>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h5 className="font-semibold text-sm mb-2">Exposition</h5>
+            <p className="text-sm text-muted-foreground">{output.plotStructure.exposition}</p>
+          </div>
+          
+          <div>
+            <h5 className="font-semibold text-sm mb-2">Inciting Incident</h5>
+            <p className="text-sm text-muted-foreground">{output.plotStructure.incitingIncident}</p>
+          </div>
+          
+          <div>
+            <h5 className="font-semibold text-sm mb-2">Climax</h5>
+            <p className="text-sm text-muted-foreground">{output.plotStructure.climax}</p>
+          </div>
+          
+          <div>
+            <h5 className="font-semibold text-sm mb-2">Resolution</h5>
+            <p className="text-sm text-muted-foreground">{output.plotStructure.resolution}</p>
+          </div>
+        </div>
+
+        <div>
+          <h5 className="font-semibold text-sm mb-2">Rising Action</h5>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            {output.plotStructure.risingAction?.map((action, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {action}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {output.plotStructure.fallingAction && output.plotStructure.fallingAction.length > 0 && (
+          <div>
+            <h5 className="font-semibold text-sm mb-2">Falling Action</h5>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              {output.plotStructure.fallingAction.map((action, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  {action}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Chapter Summaries */}
+      {output.chapterSummaries.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3">Chapter Summaries</h4>
+          <div className="space-y-2">
+            {output.chapterSummaries.map((summary, index) => (
+              <div key={index} className="p-3 bg-muted/30 rounded-lg border">
+                <div className="font-medium text-sm mb-1">Chapter {index + 1}</div>
+                <div className="text-sm text-muted-foreground">{summary}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Key Plot Points */}
+      {output.keyPlotPoints.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3">Key Plot Points</h4>
+          <ul className="text-sm text-muted-foreground space-y-2">
+            {output.keyPlotPoints.map((point, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {point}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Pacing Notes */}
+      {output.pacingNotes.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3">Pacing Notes</h4>
+          <ul className="text-sm text-muted-foreground space-y-2">
+            {output.pacingNotes.map((note, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-primary">•</span>
+                {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {output.recommendations && output.recommendations.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            Development Recommendations
+          </h4>
+          
+          <div className="space-y-2">
+            {output.recommendations.map((rec, index) => (
+              <div key={index} className="p-3 bg-muted/50 rounded-lg border">
+                <div className="flex items-start justify-between mb-2">
+                  <span className="font-medium text-sm">{rec.area}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}
+                      className="text-xs"
+                    >
+                      {rec.priority}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Score: {rec.score}/10
+                    </span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{rec.suggestion}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 
@@ -153,6 +500,10 @@ export function PhaseDeliverables({
         return renderIdeationOutput(deliverable as IdeationOutput)
       case 'worldbuilding':
         return renderWorldBuildingOutput(deliverable as WorldBuildingOutput)
+      case 'characters':
+        return renderCharacterOutput(deliverable as CharacterDevelopmentOutput)
+      case 'outline':
+        return renderOutlineOutput(deliverable as OutlineOutput)
       default:
         return <p className="text-sm text-muted-foreground">Output format not implemented yet</p>
     }
@@ -202,9 +553,30 @@ export function PhaseDeliverables({
             <Separator />
             
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                Synthesized {new Date(project.phaseDeliverables?.[currentPhase]?.synthesizedAt || 0).toLocaleString()}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Synthesized {new Date(project.phaseDeliverables?.[currentPhase]?.synthesizedAt || 0).toLocaleString()}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSynthesize}
+                  disabled={isGenerating}
+                  className="text-xs h-6 px-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1" />
+                      Re-synthesizing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Re-synthesize
+                    </>
+                  )}
+                </Button>
+              </div>
               {nextPhase && (
                 <Button
                   onClick={() => onMoveToNextPhase(nextPhase)}
@@ -219,7 +591,7 @@ export function PhaseDeliverables({
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
-            {canSynthesize(currentPhase) ? (
+            {canSynthesizeCurrentPhase ? (
               <>
                 <AlertCircle className="h-12 w-12 text-primary/50" />
                 <div>

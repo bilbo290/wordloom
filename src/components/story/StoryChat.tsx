@@ -46,14 +46,28 @@ export function StoryChat({
 }: StoryChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<Message[]>(() => 
-    project.chatHistory?.map(msg => ({
-      id: msg.id,
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content
-    })) || []
+    project.chatHistory
+      ?.filter(msg => msg.phase === phase) // Only show messages from current phase
+      ?.map(msg => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      })) || []
   )
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  // Update messages when phase changes or project chat history updates
+  useEffect(() => {
+    const phaseMessages = project.chatHistory
+      ?.filter(msg => msg.phase === phase)
+      ?.map(msg => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      })) || []
+    setMessages(phaseMessages)
+  }, [project.chatHistory, phase])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -110,12 +124,16 @@ export function StoryChat({
       const provider = createAIProvider('lmstudio')
       const model = getModel('lmstudio')
 
+      // Get current phase messages for conversation context
+      const phaseMessages = project.chatHistory
+        ?.filter(msg => msg.phase === phase)
+        ?.map(msg => ({ role: msg.role, content: msg.content })) || []
+      
       // Ensure proper user/assistant alternation by filtering messages
-      const conversationMessages = messages.map(msg => ({ role: msg.role, content: msg.content }))
       const filteredMessages = []
       let expectedRole = 'user' // Start expecting user message after system
       
-      for (const msg of conversationMessages) {
+      for (const msg of phaseMessages) {
         if (msg.role === expectedRole) {
           filteredMessages.push(msg)
           expectedRole = expectedRole === 'user' ? 'assistant' : 'user'
@@ -370,6 +388,12 @@ Story Details:
 - Tense: ${project.settings.tense || 'past'}
 - Target Audience: ${project.settings.targetAudience || 'general'}`
 
+  // Add previous phase context if available
+  const previousPhaseContext = buildPreviousPhaseContextForChat(project, phase)
+  if (previousPhaseContext) {
+    systemMessage += `\n\n${previousPhaseContext}`
+  }
+
   if (project.settings.themes && project.settings.themes.length > 0) {
     systemMessage += `\n- Themes: ${project.settings.themes.join(', ')}`
   }
@@ -438,4 +462,49 @@ Story Details:
   }
 
   return systemMessage
+}
+
+// Build context from previous phases for chat system message
+function buildPreviousPhaseContextForChat(project: StoryProject, currentPhase: StoryPhase): string {
+  if (!project.phaseDeliverables) return ""
+  
+  const context: string[] = []
+  const phases: StoryPhase[] = ['ideation', 'worldbuilding', 'characters', 'outline']
+  const currentIndex = phases.indexOf(currentPhase)
+  
+  // Include all previous completed phases
+  for (let i = 0; i < currentIndex; i++) {
+    const phase = phases[i]
+    const deliverable = project.phaseDeliverables[phase]
+    
+    if (deliverable) {
+      context.push(`\n=== ${phase.toUpperCase()} PHASE SYNTHESIS ===`)
+      
+      switch (phase) {
+        case 'ideation':
+          const ideation = deliverable as any
+          context.push(`Core Premise: ${ideation.synthesizedIdea?.corePremise}`)
+          context.push(`Central Conflict: ${ideation.synthesizedIdea?.centralConflict}`)
+          context.push(`Themes: ${ideation.synthesizedIdea?.themes?.join(', ')}`)
+          context.push(`Unique Elements: ${ideation.synthesizedIdea?.uniqueElements?.join(', ')}`)
+          break
+          
+        case 'worldbuilding':
+          const world = deliverable as any
+          context.push(`World Overview: ${world.synthesizedIdea?.worldOverview}`)
+          context.push(`World Rules: ${world.synthesizedIdea?.worldRules?.join(', ')}`)
+          context.push(`Key Locations: ${world.synthesizedIdea?.keyLocations?.map((l: any) => `${l.name} - ${l.description}`).join('; ')}`)
+          break
+          
+        case 'characters':
+          const chars = deliverable as any
+          context.push(`Main Characters: ${chars.mainCharacters?.map((c: any) => `${c.name} (${c.role}) - ${c.description}`).join('; ')}`)
+          context.push(`Character Arcs: ${chars.characterArcs?.join(', ')}`)
+          context.push(`Relationship Dynamics: ${chars.relationshipDynamics?.join(', ')}`)
+          break
+      }
+    }
+  }
+  
+  return context.length > 0 ? `PREVIOUS PHASE CONTEXT:\n${context.join('\n')}` : ""
 }

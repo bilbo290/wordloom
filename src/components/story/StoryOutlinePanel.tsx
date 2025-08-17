@@ -18,7 +18,8 @@ import {
   Globe,
   Target,
   MoreVertical,
-  GripVertical
+  GripVertical,
+  Sparkles
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -88,6 +89,28 @@ export function StoryOutlinePanel({
     onUpdateOutline({
       ...project.outline,
       chapters: [...project.outline.chapters, newChapter]
+    })
+  }
+
+  // Generate chapters from synthesized outline
+  const generateChaptersFromOutline = () => {
+    if (!synthesizedOutline?.chapterSummaries) return
+
+    const newChapters: ChapterOutline[] = synthesizedOutline.chapterSummaries.map((summary, index) => ({
+      id: generateId(),
+      number: index + 1,
+      title: `Chapter ${index + 1}`,
+      summary: summary,
+      purpose: '', // Could be derived from outline data
+      scenes: [],
+      characters: synthesizedCharacters.map(c => c.id), // Include all main characters for now
+      currentWordCount: 0,
+      status: 'planned' as const
+    }))
+
+    onUpdateOutline({
+      ...project.outline,
+      chapters: [...project.outline.chapters, ...newChapters]
     })
   }
 
@@ -205,6 +228,15 @@ export function StoryOutlinePanel({
     }
   }
 
+  // Get synthesized characters from phase deliverables
+  const synthesizedCharacters = project.phaseDeliverables?.characters?.mainCharacters || []
+  
+  // Get synthesized outline data
+  const synthesizedOutline = project.phaseDeliverables?.outline
+  
+  // Combine existing chapters with synthesized data for display
+  const displayCharacters = synthesizedCharacters.length > 0 ? synthesizedCharacters : project.outline.characters
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -240,7 +272,7 @@ export function StoryOutlinePanel({
               <Users className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Characters</span>
               <Badge variant="secondary" className="text-xs">
-                {project.outline.characters?.length || 0}
+                {displayCharacters?.length || 0}
               </Badge>
             </div>
             {showCharacters ? (
@@ -251,17 +283,27 @@ export function StoryOutlinePanel({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="px-4 pb-2 space-y-1">
-              {project.outline.characters?.map(character => (
+              {displayCharacters?.map(character => (
                 <div
                   key={character.id}
-                  className="flex items-center justify-between py-1 px-2 rounded hover:bg-accent/30 text-sm"
+                  className="flex items-start justify-between py-2 px-2 rounded hover:bg-accent/30 text-sm border border-transparent hover:border-accent/20"
                 >
-                  <span className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                      {character.role}
-                    </Badge>
-                    {character.name}
-                  </span>
+                  <div className="flex flex-col gap-1 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {character.role}
+                      </Badge>
+                      <span className="font-medium">{character.name}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {character.description}
+                    </p>
+                    {character.motivation && (
+                      <p className="text-xs text-muted-foreground/80">
+                        <span className="font-medium">Goal:</span> {character.motivation}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )) || (
                 <p className="text-xs text-muted-foreground italic">No characters yet</p>
@@ -284,19 +326,46 @@ export function StoryOutlinePanel({
         {/* Chapters */}
         <div className="py-2">
           {project.outline.chapters.length === 0 ? (
-            <div className="px-4 py-8 text-center">
+            <div className="px-4 py-8 text-center space-y-3">
               <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground mb-3">
+              <p className="text-sm text-muted-foreground">
                 No chapters yet
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addChapter}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Chapter
-              </Button>
+              
+              {synthesizedOutline?.chapterSummaries && synthesizedOutline.chapterSummaries.length > 0 ? (
+                <div className="space-y-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={generateChaptersFromOutline}
+                    className="bg-gradient-to-r from-primary to-primary/80"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate from Outline
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {synthesizedOutline.chapterSummaries.length} chapters from synthesis
+                  </p>
+                  <Separator className="my-2" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addChapter}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Manually
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addChapter}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add First Chapter
+                </Button>
+              )}
             </div>
           ) : (
             project.outline.chapters.map(chapter => (

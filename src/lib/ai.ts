@@ -23,9 +23,7 @@ export function createAIProvider(provider: AIProvider = 'lmstudio') {
   const isDev = import.meta.env.DEV
   
   if (provider === 'ollama') {
-    const baseURL = isDev 
-      ? `${window.location.origin}/ollama/v1`  // Use full URL for proxy in development
-      : import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1'
+    const baseURL = import.meta.env.VITE_OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1'
     
     return createOpenAICompatible({
       name: 'ollama',
@@ -35,9 +33,7 @@ export function createAIProvider(provider: AIProvider = 'lmstudio') {
   }
   
   // LM Studio provider (default)
-  const baseURL = isDev 
-    ? `${window.location.origin}/v1`  // Use full URL for proxy in development
-    : import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
+  const baseURL = import.meta.env.VITE_OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
   
   return createOpenAICompatible({
     name: 'lmstudio',

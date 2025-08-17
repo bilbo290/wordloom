@@ -25,23 +25,39 @@ export interface PhaseDeliverables {
 }
 
 export interface IdeationOutput {
-  corePremise: string
-  themes: string[]
-  keyMessages: string[]
-  centralConflict: string
-  targetAudience: string
-  genreConventions: string[]
-  uniqueElements: string[]
+  synthesizedIdea: {
+    corePremise: string
+    themes: string[]
+    keyMessages: string[]
+    centralConflict: string
+    targetAudience: string
+    genreConventions: string[]
+    uniqueElements: string[]
+  }
+  recommendations: Array<{
+    area: string
+    suggestion: string
+    score: number
+    priority: 'low' | 'medium' | 'high'
+  }>
   synthesizedAt: number
 }
 
 export interface WorldBuildingOutput {
-  worldOverview: string
-  settingDetails: string[]
-  worldRules: string[]
-  keyLocations: Location[]
-  culturalElements: string[]
-  historicalContext: string
+  synthesizedIdea: {
+    worldOverview: string
+    settingDetails: string[]
+    worldRules: string[]
+    keyLocations: Location[]
+    culturalElements: string[]
+    historicalContext: string
+  }
+  recommendations: Array<{
+    area: string
+    suggestion: string
+    score: number
+    priority: 'low' | 'medium' | 'high'
+  }>
   synthesizedAt: number
 }
 
@@ -50,6 +66,12 @@ export interface CharacterDevelopmentOutput {
   relationshipDynamics: string[]
   characterArcs: string[]
   voiceNotes: string[]
+  recommendations: Array<{
+    area: string
+    suggestion: string
+    score: number
+    priority: 'low' | 'medium' | 'high'
+  }>
   synthesizedAt: number
 }
 
@@ -58,6 +80,12 @@ export interface OutlineOutput {
   chapterSummaries: string[]
   keyPlotPoints: string[]
   pacingNotes: string[]
+  recommendations: Array<{
+    area: string
+    suggestion: string
+    score: number
+    priority: 'low' | 'medium' | 'high'
+  }>
   synthesizedAt: number
 }
 
@@ -152,9 +180,18 @@ export interface SceneOutline {
   mood?: string
   conflict?: string
   outcome?: string
-  status: 'planned' | 'written' | 'revised'
+  status: 'concept' | 'outlined' | 'planned' | 'written' | 'revised'
   wordCount?: number
   content?: string  // Actual written content
+  // Storyboarding enhancements
+  visualDescription?: string  // Cinematic description for mental imagery
+  emotionalArc?: EmotionalBeat[]  // Character emotional progression
+  tensionLevel?: number  // 1-10 tension rating for pacing
+  sceneType?: SceneType
+  dependencies?: string[]  // Scene IDs this scene depends on
+  chatHistory?: ChatMessage[]  // Scene-specific discussions
+  synthesisData?: SceneSynthesis  // AI synthesis of scene planning
+  storyboardPosition?: number  // Visual ordering in storyboard
 }
 
 export interface StoryBeat {
@@ -162,6 +199,46 @@ export interface StoryBeat {
   description: string
   type: 'action' | 'dialogue' | 'description' | 'revelation' | 'emotion'
   impact: 'minor' | 'moderate' | 'major'  // Impact on story
+  visualCue?: string  // Visual/cinematic element
+  duration?: 'brief' | 'moderate' | 'extended'  // Time this beat takes
+}
+
+// Scene storyboarding types
+export interface EmotionalBeat {
+  characterId: string
+  emotion: string
+  intensity: number  // 1-10
+  trigger?: string  // What causes this emotional state
+  beatId?: string  // Associated story beat
+}
+
+export type SceneType = 
+  | 'opening'       // Chapter/story opening
+  | 'setup'         // Establishing situation
+  | 'development'   // Building tension/relationships
+  | 'climax'        // Peak tension/revelation
+  | 'resolution'    // Resolving conflict
+  | 'transition'    // Moving between plot points
+  | 'interlude'     // Character/world building
+  | 'cliffhanger'   // Ending with suspense
+
+export interface SceneSynthesis {
+  sceneOverview: string
+  keyBeats: string[]
+  characterMoments: Array<{
+    characterId: string
+    moment: string
+    emotionalState: string
+  }>
+  visualElements: string[]
+  dialogueOpportunities: string[]
+  tensionProgression: string
+  recommendations: Array<{
+    area: string
+    suggestion: string
+    priority: 'low' | 'medium' | 'high'
+  }>
+  synthesizedAt: number
 }
 
 export interface ChatMessage {
@@ -188,6 +265,7 @@ export interface ChatMetadata {
   characterId?: string
   action?: StoryAction
   context?: string
+  sceneContext?: 'storyboard' | 'beats' | 'dialogue' | 'visual' | 'pacing'  // Scene-specific discussion context
 }
 
 export type StoryAction = 
@@ -202,6 +280,14 @@ export type StoryAction =
   | 'expand_worldbuilding'
   | 'analyze_pacing'
   | 'check_consistency'
+  // Scene storyboarding actions
+  | 'develop_scene_beats'
+  | 'plan_scene_structure'
+  | 'design_scene_flow'
+  | 'craft_scene_dialogue'
+  | 'build_scene_tension'
+  | 'establish_scene_mood'
+  | 'connect_scene_narrative'
 
 export interface StoryWriterState {
   activeProject: StoryProject | null
