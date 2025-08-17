@@ -7,11 +7,11 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import MonacoEditor from '@monaco-editor/react'
-import { 
-  BookOpen, 
-  PenTool, 
-  Save, 
-  FileText, 
+import {
+  BookOpen,
+  PenTool,
+  Save,
+  FileText,
   Target,
   Users,
   MapPin,
@@ -24,10 +24,11 @@ import {
   Camera,
   MessageSquare,
   Layout,
-  Layers
+  Layers,
+  Zap
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { 
+import type {
   StoryProject,
   ChapterOutline,
   SceneOutline
@@ -153,11 +154,11 @@ export function ChapterWorkspace({
   // Get character list for current context
   const getCurrentCharacters = () => {
     if (activeScene) {
-      return project.outline.characters?.filter(c => 
+      return project.outline.characters?.filter(c =>
         activeScene.characters.includes(c.id)
       ) || []
     } else if (activeChapter) {
-      return project.outline.characters?.filter(c => 
+      return project.outline.characters?.filter(c =>
         activeChapter.characters.includes(c.id)
       ) || []
     }
@@ -245,9 +246,9 @@ export function ChapterWorkspace({
                 <span> / {activeChapter.targetWordCount.toLocaleString()}</span>
               )}
             </div>
-            
+
             <Separator orientation="vertical" className="h-6" />
-            
+
             <Button
               variant="outline"
               size="sm"
@@ -257,7 +258,7 @@ export function ChapterWorkspace({
               <Save className="h-4 w-4 mr-2" />
               Save
             </Button>
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -278,14 +279,14 @@ export function ChapterWorkspace({
                 <span>{activeScene.setting}</span>
               </div>
             )}
-            
+
             {getCurrentCharacters().length > 0 && (
               <div className="flex items-center gap-1">
                 <Users className="h-3 w-3" />
                 <span>{getCurrentCharacters().map(c => c.name).join(', ')}</span>
               </div>
             )}
-            
+
             {activeScene.mood && (
               <div className="flex items-center gap-1">
                 <Sparkles className="h-3 w-3" />
@@ -297,11 +298,11 @@ export function ChapterWorkspace({
       </div>
 
       {/* Main Content with Tabs */}
-      <div className="flex-1 flex">
+      <div className="flex-1 min-h-0 flex">
         {/* Left Panel - Storyboard/Development */}
-        <div className="w-80 border-r">
+        <div className="w-80 border-r flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-            <div className="border-b px-3 py-2">
+            <div className="border-b px-3 py-2 flex-shrink-0">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="storyboard" className="flex items-center gap-2">
                   <Camera className="h-4 w-4" />
@@ -313,8 +314,8 @@ export function ChapterWorkspace({
                 </TabsTrigger>
               </TabsList>
             </div>
-            
-            <TabsContent value="storyboard" className="flex-1 mt-0 min-h-0 flex flex-col">
+
+            <TabsContent value="storyboard" className="overflow-hidden">
               <SceneStoryboard
                 chapter={activeChapter}
                 activeSceneId={activeSceneId}
@@ -322,8 +323,8 @@ export function ChapterWorkspace({
                 onUpdateChapter={onUpdateChapter}
               />
             </TabsContent>
-            
-            <TabsContent value="scene-chat" className="flex-1 mt-0 min-h-0 flex flex-col">
+
+            <TabsContent value="scene-chat" className="relative h-full">
               {activeScene ? (
                 <SceneChat
                   project={project}
@@ -356,38 +357,227 @@ export function ChapterWorkspace({
           </Tabs>
         </div>
 
-        {/* Center - Editor */}
+        {/* Center - Scene Planning */}
         <div className="flex-1 flex flex-col">
           {activeScene ? (
-            <div className="flex-1 min-h-0">
-              <MonacoEditor
-                value={content}
-                onChange={(value) => {
-                  setContent(value || '')
-                  setIsDirty(true)
-                }}
-                language="markdown"
-                theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                options={{
-                  minimap: { enabled: false },
-                  wordWrap: 'on',
-                  lineNumbers: 'off',
-                  fontSize: 16,
-                  fontFamily: 'Georgia, serif',
-                  lineHeight: 28,
-                  padding: { top: 20, bottom: 20 },
-                  scrollBeyondLastLine: false,
-                  renderLineHighlight: 'none',
-                  occurrencesHighlight: false,
-                  selectionHighlight: false,
-                  hideCursorInOverviewRuler: true,
-                  overviewRulerBorder: false,
-                  scrollbar: {
-                    vertical: 'auto',
-                    horizontal: 'hidden'
-                  }
-                }}
-              />
+            <div className="flex-1 min-h-0 p-6 overflow-y-auto">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {/* AI Synthesis Status - Featured */}
+                {activeScene.synthesisData ? (
+                  <Card className="border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5">
+                    <CardHeader>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        <Sparkles className="h-6 w-6 text-primary" />
+                        AI Scene Synthesis
+                      </CardTitle>
+                      <CardDescription>
+                        Your scene has been analyzed and enhanced by AI
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <h4 className="font-semibold mb-2">Scene Overview</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {activeScene.synthesisData.sceneOverview}
+                        </p>
+                      </div>
+                      
+                      {activeScene.synthesisData.recommendations.length > 0 && (
+                        <div>
+                          <h4 className="font-semibold mb-2">AI Recommendations</h4>
+                          <div className="space-y-2">
+                            {activeScene.synthesisData.recommendations.slice(0, 3).map((rec, index) => (
+                              <div key={index} className="p-3 bg-background/50 rounded-lg border">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-sm">{rec.area}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    Priority: {rec.priority}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{rec.suggestion}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <p className="text-xs text-muted-foreground">
+                          Synthesized {new Date(activeScene.synthesisData.synthesizedAt || 0).toLocaleString()}
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => onSynthesizeScene?.(activeScene)}
+                        >
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Re-synthesize
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-shrink-0">
+                          <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                            <Sparkles className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
+                            Ready for AI Synthesis
+                          </h3>
+                          <p className="text-sm text-amber-700 dark:text-amber-200">
+                            Once you've developed your scene through chat, use AI synthesis to get structured insights and recommendations.
+                          </p>
+                        </div>
+                        {activeScene.chatHistory && activeScene.chatHistory.filter(m => m.role === 'user').length >= 2 && (
+                          <Button 
+                            className="bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => onSynthesizeScene?.(activeScene)}
+                          >
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Synthesize Scene
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Story Beats - From Synthesis */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Zap className="h-5 w-5" />
+                      Story Beats
+                      {activeScene.beats.length > 0 && (
+                        <Badge variant="secondary" className="ml-2">
+                          {activeScene.beats.length} beats
+                        </Badge>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {activeScene.beats.length > 0 ? (
+                      <div className="space-y-3">
+                        {activeScene.beats.map((beat, index) => (
+                          <div key={beat.id} className="p-3 bg-muted/30 rounded-lg">
+                            <div className="flex items-start gap-3">
+                              <span className="text-sm font-medium text-muted-foreground">
+                                {index + 1}.
+                              </span>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {beat.type}
+                                  </Badge>
+                                  {beat.emotionalBeat && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      {beat.emotionalBeat}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-sm">{beat.description}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Zap className="h-8 w-8 mx-auto mb-3 text-muted-foreground/50" />
+                        <p className="text-sm text-muted-foreground">
+                          No story beats yet. Develop your scene in the chat, then use AI synthesis to extract structured beats.
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Scene Details - Compact */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Target className="h-4 w-4" />
+                        Scene Details
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Purpose</label>
+                        <p className="text-sm mt-1">
+                          {activeScene.purpose || 'Use Scene Chat to define purpose'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Setting</label>
+                        <p className="text-sm mt-1">
+                          {activeScene.setting || 'Not specified'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Characters</label>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {getCurrentCharacters().map(char => (
+                            <Badge key={char.id} variant="secondary" className="text-xs">
+                              {char.name}
+                            </Badge>
+                          ))}
+                          {getCurrentCharacters().length === 0 && (
+                            <p className="text-xs text-muted-foreground">No characters assigned</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Notes
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        value={sceneNotes}
+                        onChange={(e) => {
+                          setSceneNotes(e.target.value)
+                          setIsDirty(true)
+                        }}
+                        placeholder="Quick notes about this scene..."
+                        className="min-h-[100px] resize-none text-sm"
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Ready for Writing */}
+                {activeScene.beats.length > 0 && (
+                  <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-semibold text-green-900 dark:text-green-100 mb-1">
+                            Scene Ready for Writing
+                          </h4>
+                          <p className="text-sm text-green-700 dark:text-green-200">
+                            This scene has {activeScene.beats.length} structured beats and is ready for prose writing.
+                          </p>
+                        </div>
+                        <Button className="bg-green-600 hover:bg-green-700 text-white">
+                          <Edit3 className="h-4 w-4 mr-2" />
+                          Start Writing
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center">
@@ -418,7 +608,7 @@ export function ChapterWorkspace({
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground mb-3">
                       Start by creating scenes in the storyboard, then select one to begin writing.

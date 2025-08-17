@@ -25,6 +25,7 @@ import { StoryProjectSettings } from '@/components/story/StoryProjectSettings'
 import { NewProjectDialog } from '@/components/story/NewProjectDialog'
 import { StoryProjectSelection } from '@/components/story/StoryProjectSelection'
 import { PhaseDeliverables } from '@/components/story/PhaseDeliverables'
+import { PhaseSidebar } from '@/components/story/PhaseSidebar'
 import type { 
   StoryProject, 
   StoryPhase, 
@@ -34,6 +35,8 @@ import type {
 import { getStoryProjects, saveStoryProjects } from '@/lib/story-types'
 import { generateId } from '@/lib/session'
 import { cn } from '@/lib/utils'
+import { streamText } from 'ai'
+import { createAIProvider, getModel } from '@/lib/ai'
 
 
 export function StoryWriterMode() {
@@ -175,18 +178,68 @@ export function StoryWriterMode() {
       updatedAt: Date.now()
     }
 
+    // Debug chat history updates
+    if (updates.chatHistory) {
+      console.log('[StoryWriterMode] updateActiveProject - chat history update:', {
+        oldHistoryLength: state.activeProject.chatHistory?.length || 0,
+        newHistoryLength: updatedProject.chatHistory?.length || 0,
+        lastMessage: updatedProject.chatHistory?.length > 0 ? {
+          id: updatedProject.chatHistory[updatedProject.chatHistory.length - 1].id,
+          phase: updatedProject.chatHistory[updatedProject.chatHistory.length - 1].phase,
+          role: updatedProject.chatHistory[updatedProject.chatHistory.length - 1].role
+        } : null
+      })
+    }
+
     setProjects(prev => prev.map(p => 
       p.id === updatedProject.id ? updatedProject : p
     ))
     setState(prev => ({ ...prev, activeProject: updatedProject }))
   }
 
-  // Add chat message
+  // Add chat message with functional state update to prevent race conditions
   const addChatMessage = (message: ChatMessage) => {
     if (!state.activeProject) return
 
-    updateActiveProject({
-      chatHistory: [...state.activeProject.chatHistory, message]
+    console.log('[StoryWriterMode] Adding message:', {
+      messageId: message.id,
+      role: message.role,
+      phase: message.phase,
+      hasPhaseField: message.hasOwnProperty('phase'),
+      phaseType: typeof message.phase,
+      content: message.content.substring(0, 50) + '...'
+    })
+
+    // Use functional state update to prevent race conditions
+    setState(prevState => {
+      if (!prevState.activeProject) return prevState
+      
+      const updatedChatHistory = [...prevState.activeProject.chatHistory, message]
+      console.log('[StoryWriterMode] Updated chat history:', {
+        totalMessages: updatedChatHistory.length,
+        lastMessage: {
+          id: updatedChatHistory[updatedChatHistory.length - 1].id,
+          phase: updatedChatHistory[updatedChatHistory.length - 1].phase,
+          role: updatedChatHistory[updatedChatHistory.length - 1].role
+        }
+      })
+
+      const updatedProject = {
+        ...prevState.activeProject,
+        chatHistory: updatedChatHistory,
+        updatedAt: Date.now()
+      }
+
+      // Update projects array
+      const updatedProjects = projects.map(p => 
+        p.id === updatedProject.id ? updatedProject : p
+      )
+      setProjects(updatedProjects)
+
+      return {
+        ...prevState,
+        activeProject: updatedProject
+      }
     })
   }
 
@@ -224,6 +277,87 @@ export function StoryWriterMode() {
     setState(prev => ({ ...prev, activeSceneId: sceneId }))
   }
 
+  // Scene synthesis functionality
+  const synthesizeScene = async (scene: SceneOutline) => {
+    if (!state.activeProject) return
+
+    // Get scene-specific chat messages
+    const sceneMessages = scene.chatHistory || []
+    
+    if (sceneMessages.filter(msg => msg.role === 'user').length < 2) {
+      toast({
+        title: "More discussion needed",
+        description: "Have at least 2 back-and-forth exchanges about this scene before synthesizing",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Build synthesis prompt for scene
+    const conversationText = sceneMessages
+      .map(msg => `${msg.role}: ${msg.content}`)
+      .join('\n\n')
+
+    const sceneContextText = buildSceneContext(scene)
+    const synthesisPrompt = getSceneSynthesisPrompt(scene, conversationText, sceneContextText)
+    
+    try {
+      setState(prev => ({ ...prev, isGenerating: true }))
+      
+      const provider = createAIProvider('lmstudio')
+      const model = getModel('lmstudio')
+      
+      const { text } = await streamText({
+        model: provider(model),
+        temperature: 0.3,
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are a scene development assistant. Analyze scene conversations and extract structured scene elements with specific recommendations. Always respond with valid JSON only.' 
+          },
+          { role: 'user', content: synthesisPrompt }
+        ]
+      })
+      
+      // Parse scene synthesis
+      const fullText = await text
+      const cleanedText = fullText.replace(/```json\n?|\n?```/g, '').trim()
+      const sceneSynthesis = JSON.parse(cleanedText)
+      
+      // Find and update the scene in the project
+      const updatedChapters = state.activeProject.outline.chapters.map(chapter => {
+        const updatedScenes = chapter.scenes.map(s => 
+          s.id === scene.id 
+            ? { ...s, synthesisData: sceneSynthesis, status: 'outlined' as const }
+            : s
+        )
+        return { ...chapter, scenes: updatedScenes }
+      })
+
+      updateActiveProject({
+        outline: {
+          ...state.activeProject.outline,
+          chapters: updatedChapters
+        }
+      })
+
+      toast({
+        title: "Scene synthesized",
+        description: `Scene "${scene.title}" has been analyzed and structured`
+      })
+
+    } catch (error) {
+      console.error('Scene synthesis error:', error)
+      toast({
+        title: "Synthesis failed",
+        description: "Could not synthesize the scene discussion. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setState(prev => ({ ...prev, isGenerating: false }))
+    }
+  }
+
   // Phase synthesis functionality
   const synthesizePhase = async (phase: StoryPhase) => {
     if (!state.activeProject) return
@@ -241,29 +375,32 @@ export function StoryWriterMode() {
     try {
       setState(prev => ({ ...prev, isGenerating: true }))
       
-      // Call AI to synthesize the conversation
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            { role: 'system', content: 'You are a story development assistant. Analyze conversations and extract structured story elements.' },
-            { role: 'user', content: synthesisPrompt }
-          ],
-          data: { provider: 'lmstudio', temperature: 0.3 }
-        })
-      })
-
-      if (!response.ok) throw new Error('Failed to synthesize phase')
+      // Use AI SDK with streamText and JSON parsing
+      const provider = createAIProvider('lmstudio')
+      const model = getModel('lmstudio')
       
-      const text = await response.text()
-      const parsedOutput = parsePhaseOutput(phase, text)
+      const { text } = await streamText({
+        model: provider(model),
+        temperature: 0.3,
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are a story development assistant. Analyze conversations and extract structured story elements with actionable recommendations. Always respond with valid JSON only.' 
+          },
+          { role: 'user', content: synthesisPrompt }
+        ]
+      })
+      
+      // Wait for complete text and parse JSON
+      const fullText = await text
+      const cleanedText = fullText.replace(/```json\n?|\n?```/g, '').trim()
+      const synthesizedOutput = JSON.parse(cleanedText)
       
       // Update project with synthesized output
       updateActiveProject({
         phaseDeliverables: {
           ...state.activeProject.phaseDeliverables,
-          [phase]: parsedOutput
+          [phase]: synthesizedOutput
         }
       })
 
@@ -284,65 +421,316 @@ export function StoryWriterMode() {
     }
   }
 
+
   const getSynthesisPrompt = (phase: StoryPhase, conversation: string) => {
+    const timestamp = Date.now()
+    
+    // Build context from previous phases
+    const previousPhaseContext = buildPreviousPhaseContext(phase)
+    
     switch (phase) {
       case 'ideation':
-        return `Analyze this story ideation conversation and extract key elements in JSON format:
+        return `Analyze this story ideation conversation and synthesize the key elements. Return ONLY valid JSON with this exact structure:
+
+{
+  "synthesizedIdea": {
+    "corePremise": "string",
+    "themes": ["theme1", "theme2"],
+    "keyMessages": ["message1", "message2"],
+    "centralConflict": "string",
+    "targetAudience": "string",
+    "genreConventions": ["convention1", "convention2"],
+    "uniqueElements": ["element1", "element2"]
+  },
+  "recommendations": [
+    {
+      "area": "string",
+      "suggestion": "string",
+      "score": number_1_to_10,
+      "priority": "low|medium|high"
+    }
+  ],
+  "synthesizedAt": ${timestamp}
+}
 
 CONVERSATION:
 ${conversation}
 
-Please respond with a JSON object containing:
-{
-  "corePremise": "Main story concept in 1-2 sentences",
-  "themes": ["theme1", "theme2", "theme3"],
-  "keyMessages": ["message1", "message2"],
-  "centralConflict": "Main conflict/tension",
-  "targetAudience": "Intended readers",
-  "genreConventions": ["convention1", "convention2"],
-  "uniqueElements": ["unique aspect1", "unique aspect2"],
-  "synthesizedAt": ${Date.now()}
-}`
+Analyze the conversation and extract the core story elements. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
 
       case 'worldbuilding':
-        return `Analyze this world building conversation and extract key elements in JSON format:
+        return `Analyze this world building conversation and synthesize the key elements. Consider the story foundation from previous phases to ensure consistency.
+
+${previousPhaseContext}
+
+Return ONLY valid JSON with this exact structure:
+
+{
+  "synthesizedIdea": {
+    "worldOverview": "string",
+    "settingDetails": ["detail1", "detail2"],
+    "worldRules": ["rule1", "rule2"],
+    "keyLocations": [
+      {
+        "id": "location-id",
+        "name": "Location Name",
+        "description": "description",
+        "significance": "significance"
+      }
+    ],
+    "culturalElements": ["element1", "element2"],
+    "historicalContext": "string"
+  },
+  "recommendations": [
+    {
+      "area": "string",
+      "suggestion": "string",
+      "score": number_1_to_10,
+      "priority": "low|medium|high"
+    }
+  ],
+  "synthesizedAt": ${timestamp}
+}
 
 CONVERSATION:
 ${conversation}
 
-Please respond with a JSON object containing:
+Analyze the conversation and extract the world building elements. Ensure the world supports the core premise and themes from the ideation phase. Evaluate how well the world building serves the central conflict. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
+
+      case 'characters':
+        return `Analyze this character development conversation and synthesize the key elements. Consider the story foundation and world from previous phases to ensure character consistency and relevance.
+
+${previousPhaseContext}
+
+Return ONLY valid JSON with this exact structure:
+
 {
-  "worldOverview": "Summary of the world/setting",
-  "settingDetails": ["detail1", "detail2", "detail3"],
-  "worldRules": ["rule1", "rule2", "rule3"],
-  "keyLocations": [{"id": "loc1", "name": "Location Name", "description": "Description", "significance": "Why it matters"}],
-  "culturalElements": ["element1", "element2"],
-  "historicalContext": "Relevant history/background",
-  "synthesizedAt": ${Date.now()}
-}`
+  "mainCharacters": [
+    {
+      "id": "character-id",
+      "name": "Character Name", 
+      "role": "protagonist|antagonist|supporting|minor",
+      "description": "description",
+      "motivation": "motivation",
+      "arc": "character arc",
+      "traits": ["trait1", "trait2"],
+      "backstory": "character background",
+      "relationships": []
+    }
+  ],
+  "relationshipDynamics": ["dynamic1", "dynamic2"],
+  "characterArcs": ["arc1", "arc2"],
+  "voiceNotes": ["note1", "note2"],
+  "recommendations": [
+    {
+      "area": "string",
+      "suggestion": "string", 
+      "score": number_1_to_10,
+      "priority": "low|medium|high"
+    }
+  ],
+  "synthesizedAt": ${timestamp}
+}
+
+CONVERSATION:
+${conversation}
+
+Analyze the conversation and extract character development elements. Ensure characters serve the story premise, fit the world, and drive the central conflict. Evaluate character diversity, motivation clarity, and arc potential. Provide 3-5 specific recommendations. Return only the JSON object.`
+
+      case 'outline':
+        return `Analyze this story outline conversation and synthesize the key narrative structure. Consider the story foundation, world, and characters from previous phases to create a cohesive outline.
+
+${previousPhaseContext}
+
+Return ONLY valid JSON with this exact structure:
+
+{
+  "plotStructure": {
+    "exposition": "string",
+    "incitingIncident": "string", 
+    "risingAction": ["action1", "action2"],
+    "climax": "string",
+    "fallingAction": ["action1", "action2"],
+    "resolution": "string"
+  },
+  "chapterSummaries": ["Chapter 1 summary", "Chapter 2 summary"],
+  "keyPlotPoints": ["plot point 1", "plot point 2"],
+  "pacingNotes": ["pacing note 1", "pacing note 2"],
+  "recommendations": [
+    {
+      "area": "string",
+      "suggestion": "string",
+      "score": number_1_to_10,
+      "priority": "low|medium|high"
+    }
+  ],
+  "synthesizedAt": ${timestamp}
+}
+
+CONVERSATION:
+${conversation}
+
+Analyze the conversation and extract the story structure elements. Ensure the outline serves the characters, world, and central conflict from previous phases. Evaluate plot coherence, pacing, and narrative arc. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
 
       default:
-        return `Analyze this conversation and extract key insights in JSON format.`
+        return `Analyze this conversation and extract key insights with actionable recommendations. Consider previous phase outputs for context and consistency.
+
+${previousPhaseContext}
+
+Set synthesizedAt to ${timestamp}.
+
+CONVERSATION:
+${conversation}`
     }
   }
 
-  const parsePhaseOutput = (phase: StoryPhase, text: string) => {
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0])
-      }
-      throw new Error('No JSON found in response')
-    } catch (error) {
-      console.error('Failed to parse phase output:', error)
-      // Return a default structure if parsing fails
-      return {
-        synthesizedAt: Date.now(),
-        error: 'Failed to parse AI response'
+  // Helper function to build context from previous phases
+  const buildPreviousPhaseContext = (currentPhase: StoryPhase): string => {
+    if (!state.activeProject?.phaseDeliverables) return ""
+    
+    const context: string[] = []
+    const phases: StoryPhase[] = ['ideation', 'worldbuilding', 'characters', 'outline']
+    const currentIndex = phases.indexOf(currentPhase)
+    
+    // Include all previous completed phases
+    for (let i = 0; i < currentIndex; i++) {
+      const phase = phases[i]
+      const deliverable = state.activeProject.phaseDeliverables[phase]
+      
+      if (deliverable) {
+        context.push(`\n=== ${phase.toUpperCase()} PHASE OUTPUT ===`)
+        
+        switch (phase) {
+          case 'ideation':
+            const ideation = deliverable as any
+            context.push(`Core Premise: ${ideation.synthesizedIdea?.corePremise}`)
+            context.push(`Central Conflict: ${ideation.synthesizedIdea?.centralConflict}`)
+            context.push(`Themes: ${ideation.synthesizedIdea?.themes?.join(', ')}`)
+            context.push(`Unique Elements: ${ideation.synthesizedIdea?.uniqueElements?.join(', ')}`)
+            break
+            
+          case 'worldbuilding':
+            const world = deliverable as any
+            context.push(`World Overview: ${world.synthesizedIdea?.worldOverview}`)
+            context.push(`World Rules: ${world.synthesizedIdea?.worldRules?.join(', ')}`)
+            context.push(`Key Locations: ${world.synthesizedIdea?.keyLocations?.map((l: any) => l.name).join(', ')}`)
+            break
+            
+          case 'characters':
+            const chars = deliverable as any
+            context.push(`Main Characters: ${chars.mainCharacters?.map((c: any) => `${c.name} (${c.role})`).join(', ')}`)
+            context.push(`Character Arcs: ${chars.characterArcs?.join(', ')}`)
+            context.push(`Relationship Dynamics: ${chars.relationshipDynamics?.join(', ')}`)
+            break
+        }
       }
     }
+    
+    return context.length > 0 ? `\nPREVIOUS PHASE CONTEXT:\n${context.join('\n')}\n` : ""
   }
+
+  // Scene synthesis helper functions
+  const buildSceneContext = (scene: SceneOutline): string => {
+    if (!state.activeProject) return ""
+    
+    const context: string[] = []
+    
+    // Project-level context
+    if (state.activeProject.phaseDeliverables?.ideation?.synthesizedIdea) {
+      const ideation = state.activeProject.phaseDeliverables.ideation.synthesizedIdea
+      context.push(`STORY PREMISE: ${ideation.corePremise}`)
+      context.push(`CENTRAL CONFLICT: ${ideation.centralConflict}`)
+      context.push(`THEMES: ${ideation.themes?.join(', ')}`)
+    }
+
+    // Character context for this scene
+    if (state.activeProject.outline.characters && scene.characters.length > 0) {
+      const sceneCharacters = state.activeProject.outline.characters.filter(c => 
+        scene.characters.includes(c.id)
+      )
+      if (sceneCharacters.length > 0) {
+        context.push(`\nSCENE CHARACTERS:`)
+        sceneCharacters.forEach(char => {
+          context.push(`- ${char.name} (${char.role}): ${char.description}`)
+          if (char.motivation) context.push(`  Motivation: ${char.motivation}`)
+          if (char.arc) context.push(`  Arc: ${char.arc}`)
+        })
+      }
+    }
+
+    // Chapter context
+    const chapter = state.activeProject.outline.chapters.find(ch => 
+      ch.scenes.some(s => s.id === scene.id)
+    )
+    if (chapter) {
+      context.push(`\nCHAPTER CONTEXT:`)
+      context.push(`Chapter ${chapter.number}: ${chapter.title}`)
+      context.push(`Chapter Purpose: ${chapter.purpose}`)
+      
+      // Previous scenes in this chapter
+      const sceneIndex = chapter.scenes.findIndex(s => s.id === scene.id)
+      if (sceneIndex > 0) {
+        context.push(`\nPREVIOUS SCENES:`)
+        chapter.scenes.slice(0, sceneIndex).forEach((prevScene, idx) => {
+          context.push(`Scene ${idx + 1}: ${prevScene.title}`)
+          if (prevScene.outcome) context.push(`  Outcome: ${prevScene.outcome}`)
+        })
+      }
+    }
+
+    return context.join('\n')
+  }
+
+  const getSceneSynthesisPrompt = (scene: SceneOutline, conversation: string, sceneContext: string): string => {
+    const timestamp = Date.now()
+    
+    return `Analyze this scene development conversation and synthesize the key scene elements. Return ONLY valid JSON with this exact structure:
+
+{
+  "sceneOverview": "string - comprehensive scene description",
+  "keyBeats": ["beat1", "beat2", "beat3"],
+  "characterMoments": [
+    {
+      "characterId": "string",
+      "moment": "string - key character moment/development",
+      "emotionalState": "string - character's emotional state"
+    }
+  ],
+  "visualElements": ["visual1", "visual2"],
+  "dialogueOpportunities": ["dialogue1", "dialogue2"],
+  "tensionProgression": "string - how tension builds/releases",
+  "recommendations": [
+    {
+      "area": "string",
+      "suggestion": "string",
+      "priority": "low|medium|high"
+    }
+  ],
+  "synthesizedAt": ${timestamp}
+}
+
+SCENE CONTEXT:
+Scene ${scene.number}: ${scene.title}
+Purpose: ${scene.purpose}
+Setting: ${scene.setting}
+Current Status: ${scene.status}
+
+${sceneContext}
+
+CONVERSATION:
+${conversation}
+
+Analyze the conversation and extract specific scene development elements. Focus on:
+- Visual/cinematic elements that make the scene vivid
+- Character moments and emotional progression
+- Dialogue opportunities and character voice
+- Story beats that advance plot/character
+- Tension building and release patterns
+- Scene pacing and flow
+
+Provide 3-5 specific recommendations for developing this scene further. Rate priority based on importance for scene success. Return only the JSON object.`
+  }
+
 
   const moveToNextPhase = (nextPhase: StoryPhase) => {
     setPhase(nextPhase)
@@ -553,8 +941,18 @@ Please respond with a JSON object containing:
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Far Left Panel - Phase Progress */}
+        <div className="w-72 border-r">
+          <PhaseSidebar
+            project={state.activeProject!}
+            currentPhase={state.activePhase}
+            onPhaseClick={(phase) => setPhase(phase)}
+            onResynthesizePhase={synthesizePhase}
+          />
+        </div>
+
         {/* Left Panel - Chat */}
-        {state.chatPanelOpen && (
+        {state.chatPanelOpen && state.activePhase !== 'chapter' && state.activePhase !== 'scene' && (
           <div 
             className="border-r flex flex-col relative"
             style={{ width: `${chatPanelWidth}%` }}
@@ -620,8 +1018,9 @@ Please respond with a JSON object containing:
                   }
                 })
               }}
+              onSynthesizeScene={synthesizeScene}
             />
-          ) : state.activePhase === 'ideation' || state.activePhase === 'worldbuilding' || state.activePhase === 'characters' ? (
+          ) : state.activePhase === 'ideation' || state.activePhase === 'worldbuilding' || state.activePhase === 'characters' || state.activePhase === 'outline' ? (
             <div className="flex-1 p-6 overflow-auto">
               <PhaseDeliverables
                 project={state.activeProject!}
