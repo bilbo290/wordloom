@@ -5,8 +5,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
 import { useToast } from '@/components/ui/use-toast'
 import MonacoEditor from '@monaco-editor/react'
+import { ScenePlanner } from './ScenePlanner'
 import {
   PenTool,
   Sparkles,
@@ -26,7 +28,8 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
-  Plus
+  Plus,
+  Settings
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
@@ -64,7 +67,7 @@ export function SceneWriting({
   const [streamingContent, setStreamingContent] = useState('')
   const [wordCount, setWordCount] = useState(0)
   const [isDirty, setIsDirty] = useState(false)
-  const [writingMode, setWritingMode] = useState<'fresh' | 'continue' | 'revise'>('fresh')
+  const [writingMode, setWritingMode] = useState<'fresh' | 'continue' | 'compile'>('fresh')
   const [selectedText, setSelectedText] = useState('')
   const [selectionRange, setSelectionRange] = useState<{start: number, end: number} | null>(null)
   const [revisionDirection, setRevisionDirection] = useState('')
@@ -72,12 +75,43 @@ export function SceneWriting({
   const [addParagraphDirection, setAddParagraphDirection] = useState('')
   const [showAddParagraphPanel, setShowAddParagraphPanel] = useState(false)
   const [cursorPosition, setCursorPosition] = useState(0)
+  const [showScenePlanner, setShowScenePlanner] = useState(false)
+  const [elaborationLevel, setElaborationLevel] = useState([3]) // 1-5 scale
+  const [selectedScenes, setSelectedScenes] = useState<string[]>([]) // Scene IDs for compilation
+  const [compilationTitle, setCompilationTitle] = useState('')
   const streamRef = useRef<ReadableStreamDefaultReader<string> | null>(null)
   const editorRef = useRef<any>(null)
 
   // Get active chapter and scene
   const activeChapter = project.outline.chapters.find(ch => ch.id === activeChapterId)
   const activeScene = activeChapter?.scenes.find(s => s.id === activeSceneId)
+
+  // Elaboration level helpers
+  const getElaborationInfo = (level: number) => {
+    switch (level) {
+      case 1: return { label: 'Minimal', wordCount: 300, paragraphs: '2-3', description: 'Brief, essential beats only' }
+      case 2: return { label: 'Concise', wordCount: 600, paragraphs: '3-5', description: 'Key moments with some detail' }
+      case 3: return { label: 'Standard', wordCount: 900, paragraphs: '5-7', description: 'Balanced detail and pacing' }
+      case 4: return { label: 'Detailed', wordCount: 1200, paragraphs: '7-10', description: 'Rich descriptions and dialogue' }
+      case 5: return { label: 'Elaborate', wordCount: 1500, paragraphs: '10-15', description: 'Comprehensive, immersive prose' }
+      default: return { label: 'Standard', wordCount: 900, paragraphs: '5-7', description: 'Balanced detail and pacing' }
+    }
+  }
+
+  const currentElaboration = getElaborationInfo(elaborationLevel[0])
+
+  // Get scenes to compile
+  const getScenesToCompile = () => {
+    if (!activeChapter) return ''
+    
+    const scenes = selectedScenes.length > 0 
+      ? activeChapter.scenes.filter(s => selectedScenes.includes(s.id))
+      : activeChapter.scenes.filter(s => s.content && s.content.trim().length > 0)
+    
+    return scenes.map((scene, idx) => 
+      `\n=== SCENE ${scene.number}: ${scene.title} ===\n${scene.content || '[No content yet]'}\n`
+    ).join('\n')
+  }
 
   // Load scene content when scene changes
   useEffect(() => {
@@ -205,10 +239,38 @@ export function SceneWriting({
       context.push(`Setting: ${activeScene.setting}`)
       context.push(`Mood: ${activeScene.mood || 'Not specified'}`)
       
+      // Scene Boundaries
+      if (activeScene.openingLine || activeScene.synthesisData?.suggestedOpening) {
+        context.push('\nSCENE OPENING:')
+        context.push(activeScene.openingLine || activeScene.synthesisData?.suggestedOpening || 'Not specified')
+      }
+      
+      if (activeScene.closingLine || activeScene.synthesisData?.suggestedClosing) {
+        context.push('\nSCENE CLOSING:')
+        context.push(activeScene.closingLine || activeScene.synthesisData?.suggestedClosing || 'Not specified')
+      }
+
+      // Scene Transitions
+      if (activeScene.previousSceneConnection || activeScene.synthesisData?.transitionFromPrevious) {
+        context.push('\nTRANSITION FROM PREVIOUS SCENE:')
+        context.push(activeScene.previousSceneConnection || activeScene.synthesisData?.transitionFromPrevious || 'Not specified')
+      }
+
+      if (activeScene.nextSceneSetup || activeScene.synthesisData?.setupForNext) {
+        context.push('\nSETUP FOR NEXT SCENE:')
+        context.push(activeScene.nextSceneSetup || activeScene.synthesisData?.setupForNext || 'Not specified')
+      }
+      
       if (activeScene.beats.length > 0) {
         context.push('\nSTORY BEATS TO INCLUDE:')
         activeScene.beats.forEach((beat, idx) => {
           context.push(`${idx + 1}. ${beat.description} (${beat.type})`)
+          
+          // Include beat placement if available
+          const beatPlacement = activeScene.synthesisData?.beatPlacement?.find(bp => bp.beatId === beat.id)
+          if (beatPlacement) {
+            context.push(`   → Position: ${beatPlacement.suggestedPosition} (${beatPlacement.rationale})`)
+          }
         })
       }
 
@@ -221,6 +283,9 @@ export function SceneWriting({
         }
         if (activeScene.synthesisData.visualElements) {
           context.push('Visual Elements: ' + activeScene.synthesisData.visualElements.join(', '))
+        }
+        if (activeScene.synthesisData.dialogueOpportunities) {
+          context.push('Dialogue Opportunities: ' + activeScene.synthesisData.dialogueOpportunities.join(', '))
         }
       }
     }
@@ -241,23 +306,44 @@ export function SceneWriting({
       
       let prompt = ''
       if (writingMode === 'fresh') {
-        prompt = `Write this scene as a complete, engaging prose narrative. Use the story beats and character details provided. Show, don't tell. Use vivid imagery and natural dialogue.
+        prompt = `Write this scene as a complete, engaging prose narrative. Follow the provided scene boundaries and beat placement precisely. Show, don't tell. Use vivid imagery and natural dialogue.
 
-${direction ? `WRITING DIRECTION: ${direction}\n\n` : ''}
+${direction ? `USER'S WRITING DIRECTION: ${direction}
+↳ Apply this direction WITHIN the scene structure constraints below.\n\n` : ''}
 
-CONTEXT:
+SCENE STRUCTURE & CONTEXT:
 ${contextText}
 
-Write the complete scene in ${project.settings?.tense || 'past'} tense from ${project.settings?.perspective || 'third person'} perspective. Target approximately 800-1200 words. Focus on:
-- Advancing the story through the planned beats
-- Showing character development and relationships  
-- Creating vivid, immersive scenes
-- Natural dialogue that reveals character
-- Maintaining the established tone and style
+Write the complete scene in ${project.settings?.tense || 'past'} tense from ${project.settings?.perspective || 'third person'} perspective.
+
+ELABORATION LEVEL: ${currentElaboration.label} (${currentElaboration.wordCount} words, ${currentElaboration.paragraphs} paragraphs)
+TARGET: ${currentElaboration.description}
+
+CRITICAL REQUIREMENTS (MUST FOLLOW):
+- START the scene with the specified opening line/hook (if provided in context)
+- END the scene with the specified closing line/transition (if provided in context)  
+- IMPLEMENT story beats at their designated positions (opening/early/middle/late/closing)
+- MAINTAIN continuity from the previous scene connection (if specified)
+- SET UP elements for the next scene (if specified)
+- Follow the beat placement positions and rationales provided
+
+Scene Structure Guidelines:
+1. Opening (10%): Hook reader, establish immediate situation
+2. Early (20%): Build on opening, introduce key elements
+3. Middle (40%): Main action/conflict/development  
+4. Late (20%): Climax/resolution of scene conflict
+5. Closing (10%): Transition/setup for next scene
+
+${direction ? 
+`IMPORTANT: Incorporate the user's writing direction ("${direction}") throughout the scene while respecting the structural boundaries and beat placements above.` : 
+'Write the scene following the structural boundaries and beat placements provided.'}
 
 Write the scene now:`
 
       } else if (writingMode === 'continue') {
+        const continueElaboration = getElaborationInfo(elaborationLevel[0])
+        const continueWords = Math.ceil(continueElaboration.wordCount * 0.4) // 40% of target for continuation
+        
         prompt = `Continue this scene naturally from where it left off. Follow the remaining story beats and maintain character voice and pacing.
 
 ${direction ? `CONTINUATION DIRECTION: ${direction}\n\n` : ''}
@@ -268,20 +354,30 @@ ${contextText}
 EXISTING SCENE CONTENT:
 ${content}
 
-Continue the scene for approximately 300-500 more words, maintaining the established style and voice:`
+ELABORATION LEVEL: ${continueElaboration.label}
+TARGET: Continue with approximately ${continueWords} words (${continueElaboration.description})
 
-      } else { // revise
-        prompt = `Revise this scene to improve clarity, pacing, character development, and narrative flow. Maintain the core story beats but enhance the prose quality.
+Continue the scene maintaining the established style and voice:`
 
-${direction ? `REVISION FOCUS: ${direction}\n\n` : ''}
+      } else { // compile
+        // Compilation mode - combine multiple scenes
+        const scenesToCompile = getScenesToCompile()
+        const compileElaboration = getElaborationInfo(elaborationLevel[0])
+        
+        prompt = `Compile and seamlessly combine multiple scenes into a cohesive narrative. Smooth transitions between scenes and ensure consistent voice throughout.
+
+${direction ? `COMPILATION DIRECTION: ${direction}\n\n` : ''}
 
 CONTEXT:
 ${contextText}
 
-CURRENT SCENE CONTENT:
-${content}
+SCENES TO COMPILE:
+${scenesToCompile}
 
-Provide a revised version that improves the scene while keeping the essential story elements:`
+ELABORATION LEVEL: ${compileElaboration.label} (${compileElaboration.wordCount} words per scene target)
+TARGET: ${compileElaboration.description}
+
+Create a seamless compilation that flows naturally from scene to scene:`
       }
 
       const provider = createAIProvider('lmstudio')
@@ -293,13 +389,18 @@ Provide a revised version that improves the scene while keeping the essential st
         messages: [
           {
             role: 'system',
-            content: `You are a skilled fiction writer specializing in ${project.genre} stories. Write engaging, immersive prose that brings scenes to life. Focus on:
+            content: `You are a skilled fiction writer specializing in ${project.genre} stories. Write engaging, immersive prose that brings scenes to life while following the provided scene structure precisely. Focus on:
 - Natural, character-appropriate dialogue
 - Vivid sensory details and imagery  
 - Strong scene structure and pacing
 - Character development through action and dialogue
 - Maintaining consistent voice and tone
 - Show don't tell storytelling
+- STRICT adherence to provided scene boundaries (opening/closing lines)
+- PRECISE implementation of story beats at their designated positions
+- SMOOTH transitions that connect scene to previous/next scenes
+
+You must follow the scene boundaries and beat placement instructions exactly as provided. Start and end the scene where specified. Implement each story beat in its designated position (opening/early/middle/late/closing).
 
 Write only the prose content - no explanations or meta-commentary.`
           },
@@ -315,19 +416,24 @@ Write only the prose content - no explanations or meta-commentary.`
 
       // Apply the generated content
       let finalContent = ''
-      if (writingMode === 'fresh' || writingMode === 'revise') {
+      if (writingMode === 'fresh') {
         finalContent = accumulatedContent
         setContent(accumulatedContent)
-      } else {
+      } else if (writingMode === 'continue') {
         finalContent = content + '\n\n' + accumulatedContent
         setContent(finalContent)
+      } else { // compile
+        finalContent = accumulatedContent
+        setContent(accumulatedContent)
+        // For compilation, also trigger export
+        exportCompiledMarkdown(accumulatedContent)
       }
       
       setIsDirty(true)
       setDirection('')
 
-      // Auto-save the generated content immediately
-      if (activeChapter && activeScene) {
+      // Auto-save the generated content immediately (except for compilation)
+      if (activeChapter && activeScene && writingMode !== 'compile') {
         const updatedScenes = activeChapter.scenes.map(s =>
           s.id === activeSceneId
             ? { ...s, content: finalContent, wordCount: finalContent.trim().split(/\s+/).filter(w => w.length > 0).length, status: 'written' as const, updatedAt: Date.now() }
@@ -343,10 +449,12 @@ Write only the prose content - no explanations or meta-commentary.`
         setIsDirty(false)
       }
 
-      toast({
-        title: "Scene generated & saved",
-        description: `Scene ${writingMode === 'continue' ? 'continued' : writingMode === 'revise' ? 'revised' : 'written'} and saved automatically`
-      })
+      if (writingMode !== 'compile') {
+        toast({
+          title: "Scene generated & saved",
+          description: `Scene ${writingMode === 'continue' ? 'continued' : 'written'} and saved automatically`
+        })
+      }
 
     } catch (error) {
       console.error('Scene generation error:', error)
@@ -571,7 +679,7 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
     }
   }
 
-  // Export scene
+  // Export single scene
   const exportScene = () => {
     if (!activeScene || !content) return
 
@@ -583,6 +691,47 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
     a.download = filename
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Export compiled markdown
+  const exportCompiledMarkdown = (compiledContent: string) => {
+    if (!activeChapter) return
+
+    const title = compilationTitle.trim() || `${project.title} - ${activeChapter.title}`
+    const scenesUsed = selectedScenes.length > 0 
+      ? selectedScenes.length 
+      : activeChapter.scenes.filter(s => s.content && s.content.trim().length > 0).length
+
+    // Create markdown with metadata
+    const markdown = `# ${title}
+
+**Project:** ${project.title}  
+**Chapter:** ${activeChapter.title}  
+**Scenes Compiled:** ${scenesUsed}  
+**Generated:** ${new Date().toLocaleDateString()}  
+**Word Count:** ~${compiledContent.trim().split(/\s+/).filter(w => w.length > 0).length}
+
+---
+
+${compiledContent}
+
+---
+
+*Compiled with Wordloom Story Writer*`
+
+    const filename = `${title.replace(/[^a-zA-Z0-9\s-]/g, '')}.md`
+    const blob = new Blob([markdown], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+
+    toast({
+      title: "Compilation exported!",
+      description: `"${title}" has been saved as ${filename}`
+    })
   }
 
   if (!activeChapter || !activeScene) {
@@ -715,8 +864,23 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            <div className="text-sm text-muted-foreground">
-              {wordCount.toLocaleString()} words
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-muted-foreground">
+                {wordCount.toLocaleString()} / {currentElaboration.wordCount.toLocaleString()} words
+              </div>
+              <div 
+                className="w-16 h-2 bg-muted rounded-full overflow-hidden"
+                title={`${Math.round((wordCount / currentElaboration.wordCount) * 100)}% of target`}
+              >
+                <div 
+                  className={cn(
+                    "h-full transition-all duration-300",
+                    wordCount >= currentElaboration.wordCount ? "bg-green-500" : 
+                    wordCount >= currentElaboration.wordCount * 0.8 ? "bg-yellow-500" : "bg-blue-500"
+                  )}
+                  style={{ width: `${Math.min(100, (wordCount / currentElaboration.wordCount) * 100)}%` }}
+                />
+              </div>
             </div>
 
             {selectedText && (
@@ -729,6 +893,17 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
             )}
 
             <Separator orientation="vertical" className="h-6" />
+
+            <Button
+              variant={!(activeScene?.openingLine || activeScene?.closingLine) ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowScenePlanner(true)}
+              disabled={isGenerating}
+              className={!(activeScene?.openingLine || activeScene?.closingLine) ? "bg-blue-600 hover:bg-blue-700" : ""}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              {!(activeScene?.openingLine || activeScene?.closingLine) ? "Set Boundaries" : "Plan Scene"}
+            </Button>
 
             <Button
               variant="outline"
@@ -748,7 +923,7 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
                 disabled={isGenerating}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Revise Selection
+                Edit Selection
               </Button>
             )}
 
@@ -762,15 +937,27 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
               Save
             </Button>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={exportScene}
-              disabled={!content}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            {writingMode === 'compile' ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => content && exportCompiledMarkdown(content)}
+                disabled={!content}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export Compilation
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={exportScene}
+                disabled={!content}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export Scene
+              </Button>
+            )}
           </div>
         </div>
 
@@ -834,15 +1021,103 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
                         <span>Continue Scene</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="revise">
+                    <SelectItem value="compile">
                       <div className="flex items-center gap-2">
-                        <RefreshCw className="h-4 w-4" />
-                        <span>Revise Scene</span>
+                        <Download className="h-4 w-4" />
+                        <span>Compile & Export</span>
                       </div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Elaboration Level */}
+              <div>
+                <label className="text-xs font-medium flex items-center gap-2 mb-2">
+                  Scene Length & Detail
+                  <Badge variant="outline" className="text-xs">
+                    {currentElaboration.label}
+                  </Badge>
+                </label>
+                <Slider
+                  value={elaborationLevel}
+                  onValueChange={setElaborationLevel}
+                  min={1}
+                  max={5}
+                  step={1}
+                  className="mb-2"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <span>Minimal</span>
+                  <span>Standard</span>
+                  <span>Elaborate</span>
+                </div>
+                <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                  <p><span className="font-medium">{currentElaboration.wordCount} words</span> • {currentElaboration.paragraphs} paragraphs</p>
+                  <p>{currentElaboration.description}</p>
+                </div>
+              </div>
+
+              {/* Scene Selection for Compilation */}
+              {writingMode === 'compile' && (
+                <div>
+                  <label className="text-xs font-medium mb-2 block">Select Scenes to Compile</label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto bg-muted p-3 rounded">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="all-scenes"
+                        checked={selectedScenes.length === 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedScenes([])
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <label htmlFor="all-scenes" className="text-xs">
+                        All written scenes ({activeChapter?.scenes.filter(s => s.content && s.content.trim().length > 0).length || 0})
+                      </label>
+                    </div>
+                    {activeChapter?.scenes.map(scene => (
+                      <div key={scene.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`scene-${scene.id}`}
+                          checked={selectedScenes.includes(scene.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedScenes(prev => [...prev, scene.id])
+                            } else {
+                              setSelectedScenes(prev => prev.filter(id => id !== scene.id))
+                            }
+                          }}
+                          disabled={!scene.content || scene.content.trim().length === 0}
+                          className="rounded"
+                        />
+                        <label htmlFor={`scene-${scene.id}`} className={cn(
+                          "text-xs",
+                          (!scene.content || scene.content.trim().length === 0) && "text-muted-foreground"
+                        )}>
+                          Scene {scene.number}: {scene.title}
+                          {(!scene.content || scene.content.trim().length === 0) && " (No content)"}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-3">
+                    <label className="text-xs font-medium mb-1 block">Compilation Title</label>
+                    <input
+                      type="text"
+                      value={compilationTitle}
+                      onChange={(e) => setCompilationTitle(e.target.value)}
+                      placeholder={`${activeChapter?.title} - Complete Chapter`}
+                      className="w-full px-2 py-1 text-xs border rounded"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Direction */}
               <div>
@@ -850,9 +1125,31 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
                 <Textarea
                   value={direction}
                   onChange={(e) => setDirection(e.target.value)}
-                  placeholder="Any specific direction for the AI writer..."
+                  placeholder={
+                    writingMode === 'compile' 
+                      ? "How should scenes be combined? (e.g., 'smooth transitions', 'chapter break style', 'seamless flow')..."
+                      : (activeScene?.openingLine || activeScene?.closingLine) 
+                        ? "Specific style/tone/focus for this scene (will be applied within the configured boundaries)..."
+                        : "Any specific direction for the AI writer... (Tip: Use 'Set Boundaries' for better structure)"
+                  }
                   className="min-h-[80px] text-sm"
                 />
+                {writingMode === 'compile' ? (
+                  <div className="mt-2 p-2 bg-purple-500/10 border border-purple-500/20 rounded text-xs text-purple-700">
+                    <p className="font-medium">📚 Compilation Mode Active</p>
+                    <p>AI will combine selected scenes into a seamless narrative and export to markdown.</p>
+                  </div>
+                ) : (activeScene?.openingLine || activeScene?.closingLine) ? (
+                  <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-700">
+                    <p className="font-medium">✅ Scene boundaries configured</p>
+                    <p>AI will write within your planned structure while applying the direction above.</p>
+                  </div>
+                ) : (
+                  <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded text-xs text-blue-700">
+                    <p className="font-medium">💡 Tip: Set scene boundaries first</p>
+                    <p>Use "Set Boundaries" to define opening/closing lines for better AI output.</p>
+                  </div>
+                )}
               </div>
 
               {/* Generate Button */}
@@ -870,7 +1167,7 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
                   <>
                     <Sparkles className="h-4 w-4 mr-2" />
                     {writingMode === 'fresh' ? 'Write Scene' : 
-                     writingMode === 'continue' ? 'Continue Scene' : 'Revise Scene'}
+                     writingMode === 'continue' ? 'Continue Scene' : 'Compile & Export'}
                   </>
                 )}
               </Button>
@@ -879,8 +1176,48 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
 
           {/* Scene Context */}
           <div className="flex-1 p-4 overflow-y-auto">
-            <h4 className="font-medium text-sm mb-3">Scene Context</h4>
+            <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
+              Scene Context
+              <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 border-blue-500/20">
+                {currentElaboration.label}
+              </Badge>
+              {(activeScene?.openingLine || activeScene?.closingLine || activeScene?.beatSequence?.length) && (
+                <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                  Boundaries Set
+                </Badge>
+              )}
+            </h4>
             <div className="space-y-3 text-sm">
+              {/* Scene Boundaries */}
+              {(activeScene?.openingLine || activeScene?.closingLine || 
+                activeScene?.previousSceneConnection || activeScene?.nextSceneSetup) && (
+                <div>
+                  <label className="font-medium text-xs text-green-600">Scene Boundaries</label>
+                  <div className="mt-1 space-y-1">
+                    {activeScene.openingLine && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">Opening:</span> {activeScene.openingLine.substring(0, 60)}...
+                      </p>
+                    )}
+                    {activeScene.closingLine && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">Closing:</span> {activeScene.closingLine.substring(0, 60)}...
+                      </p>
+                    )}
+                    {activeScene.previousSceneConnection && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">From Previous:</span> Connected
+                      </p>
+                    )}
+                    {activeScene.nextSceneSetup && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">Sets Up Next:</span> Configured
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {activeScene.beats.length > 0 && (
                 <div>
                   <label className="font-medium text-xs">Story Beats</label>
@@ -975,10 +1312,10 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <RefreshCw className="h-5 w-5" />
-                Revise Selected Text
+                Edit Selected Text
               </CardTitle>
               <CardDescription>
-                AI will revise the selected text based on your direction
+                AI will rewrite the selected text based on your direction
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -990,11 +1327,11 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
               </div>
 
               <div>
-                <label className="text-sm font-medium">Revision Direction</label>
+                <label className="text-sm font-medium">Editing Direction</label>
                 <Textarea
                   value={revisionDirection}
                   onChange={(e) => setRevisionDirection(e.target.value)}
-                  placeholder="How should this text be revised? For example:&#10;• 'Make it more dramatic and intense'&#10;• 'Add more sensory details and imagery'&#10;• 'Improve the dialogue to sound more natural'&#10;• 'Increase the emotional impact'"
+                  placeholder="How should this text be rewritten? For example:&#10;• 'Make it more dramatic and intense'&#10;• 'Add more sensory details and imagery'&#10;• 'Improve the dialogue to sound more natural'&#10;• 'Increase the emotional impact'"
                   className="mt-1 min-h-[100px]"
                   autoFocus
                 />
@@ -1091,6 +1428,25 @@ Write a paragraph (100-200 words) that fits naturally between the before and aft
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Scene Planner Modal */}
+      {showScenePlanner && activeScene && (
+        <ScenePlanner
+          scene={activeScene}
+          onUpdateScene={(updatedScene) => {
+            if (activeChapter) {
+              const updatedScenes = activeChapter.scenes.map(s =>
+                s.id === activeSceneId ? updatedScene : s
+              )
+              onUpdateChapter({
+                ...activeChapter,
+                scenes: updatedScenes
+              })
+            }
+          }}
+          onClose={() => setShowScenePlanner(false)}
+        />
       )}
     </div>
   )

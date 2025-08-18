@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle,
+  Download,
   Clock
 } from 'lucide-react'
 import type { 
@@ -39,7 +40,7 @@ export function PhaseSidebar({ project, currentPhase, onPhaseClick, onResynthesi
     outline: true,
     chapter: false,
     scene: false,
-    revision: false
+    compilation: false
   })
 
   const getPhaseIcon = (phase: StoryPhase) => {
@@ -48,6 +49,7 @@ export function PhaseSidebar({ project, currentPhase, onPhaseClick, onResynthesi
       case 'worldbuilding': return <Globe className="h-4 w-4" />
       case 'characters': return <Users className="h-4 w-4" />
       case 'outline': return <FileText className="h-4 w-4" />
+      case 'compilation': return <Download className="h-4 w-4" />
       default: return <FileText className="h-4 w-4" />
     }
   }
@@ -58,6 +60,7 @@ export function PhaseSidebar({ project, currentPhase, onPhaseClick, onResynthesi
       case 'worldbuilding': return 'World Building'
       case 'characters': return 'Character Development'
       case 'outline': return 'Story Outline'
+      case 'compilation': return 'Compilation & Export'
       default: return 'Phase'
     }
   }

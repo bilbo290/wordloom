@@ -192,6 +192,20 @@ export interface SceneOutline {
   chatHistory?: ChatMessage[]  // Scene-specific discussions
   synthesisData?: SceneSynthesis  // AI synthesis of scene planning
   storyboardPosition?: number  // Visual ordering in storyboard
+  // Scene boundary enhancements
+  openingLine?: string  // How the scene should begin
+  closingLine?: string  // How the scene should end
+  previousSceneConnection?: string  // How this scene connects from the previous one
+  nextSceneSetup?: string  // What this scene should set up for the next
+  beatSequence?: BeatSequence[]  // Ordered beats with positions
+}
+
+export interface BeatSequence {
+  beatId: string
+  position: 'opening' | 'early' | 'middle' | 'late' | 'closing'
+  targetWordCount?: number
+  mustInclude: string[]  // Specific elements that must appear
+  approximatePosition?: number  // 0-100 percentage through scene
 }
 
 export interface StoryBeat {
@@ -233,6 +247,16 @@ export interface SceneSynthesis {
   visualElements: string[]
   dialogueOpportunities: string[]
   tensionProgression: string
+  // Scene boundary synthesis
+  suggestedOpening?: string
+  suggestedClosing?: string
+  transitionFromPrevious?: string
+  setupForNext?: string
+  beatPlacement?: Array<{
+    beatId: string
+    suggestedPosition: 'opening' | 'early' | 'middle' | 'late' | 'closing'
+    rationale: string
+  }>
   recommendations: Array<{
     area: string
     suggestion: string
@@ -257,7 +281,7 @@ export type StoryPhase =
   | 'outline'       // Creating/refining outline
   | 'chapter'       // Chapter-level work
   | 'scene'         // Scene-level work
-  | 'revision'      // Editing/revision phase
+  | 'compilation'   // Compiling and exporting finished content
 
 export interface ChatMetadata {
   chapterId?: string
@@ -275,7 +299,7 @@ export type StoryAction =
   | 'refine_outline'
   | 'write_chapter'
   | 'write_scene'
-  | 'revise_content'
+  | 'compile_content'
   | 'brainstorm_ideas'
   | 'expand_worldbuilding'
   | 'analyze_pacing'

@@ -25,8 +25,7 @@ import type {
   StoryProject,
   SceneOutline,
   ChatMessage,
-  StoryAction,
-  SceneSynthesis
+  StoryAction
 } from '@/lib/story-types'
 import { generateId } from '@/lib/session'
 import { streamText } from 'ai'

@@ -27,6 +27,7 @@ import { NewProjectDialog } from '@/components/story/NewProjectDialog'
 import { StoryProjectSelection } from '@/components/story/StoryProjectSelection'
 import { PhaseDeliverables } from '@/components/story/PhaseDeliverables'
 import { PhaseSidebar } from '@/components/story/PhaseSidebar'
+import { CompilationPhase } from '@/components/story/CompilationPhase'
 import type { 
   StoryProject, 
   StoryPhase, 
@@ -143,6 +144,7 @@ export function StoryWriterMode() {
         targetAudience: 'adult',
         themes: []
       },
+      phaseDeliverables: {},
       createdAt: Date.now(),
       updatedAt: Date.now()
     }
@@ -279,7 +281,7 @@ export function StoryWriterMode() {
   }
 
   // Scene synthesis functionality
-  const synthesizeScene = async (scene: SceneOutline) => {
+  const synthesizeScene = async (scene: import('../lib/story-types').SceneOutline) => {
     if (!state.activeProject) return
 
     // Get scene-specific chat messages
@@ -631,7 +633,7 @@ ${conversation}`
   }
 
   // Scene synthesis helper functions
-  const buildSceneContext = (scene: SceneOutline): string => {
+  const buildSceneContext = (scene: import('../lib/story-types').SceneOutline): string => {
     if (!state.activeProject) return ""
     
     const context: string[] = []
@@ -682,7 +684,7 @@ ${conversation}`
     return context.join('\n')
   }
 
-  const getSceneSynthesisPrompt = (scene: SceneOutline, conversation: string, sceneContext: string): string => {
+  const getSceneSynthesisPrompt = (scene: import('../lib/story-types').SceneOutline, conversation: string, sceneContext: string): string => {
     const timestamp = Date.now()
     
     return `Analyze this scene development conversation and synthesize the key scene elements. Return ONLY valid JSON with this exact structure:
@@ -700,6 +702,17 @@ ${conversation}`
   "visualElements": ["visual1", "visual2"],
   "dialogueOpportunities": ["dialogue1", "dialogue2"],
   "tensionProgression": "string - how tension builds/releases",
+  "suggestedOpening": "string - specific opening line or hook for the scene",
+  "suggestedClosing": "string - specific closing line or transition",
+  "transitionFromPrevious": "string - how to connect from previous scene",
+  "setupForNext": "string - what this scene should establish for next scene",
+  "beatPlacement": [
+    {
+      "beatId": "string - matches existing beat IDs",
+      "suggestedPosition": "opening|early|middle|late|closing",
+      "rationale": "string - why this beat should go in this position"
+    }
+  ],
   "recommendations": [
     {
       "area": "string",
@@ -728,6 +741,13 @@ Analyze the conversation and extract specific scene development elements. Focus 
 - Story beats that advance plot/character
 - Tension building and release patterns
 - Scene pacing and flow
+- Clear scene boundaries (opening hook and closing transition)
+- Connections to previous and next scenes
+- Optimal placement of story beats within the scene structure
+
+For beat placement, analyze each existing story beat and suggest where in the scene structure it should appear (opening/early/middle/late/closing) and explain why that position serves the narrative best.
+
+Provide specific, actionable suggestions for the opening line/hook and closing line/transition. Consider how this scene connects to the overall story flow.
 
 Provide 3-5 specific recommendations for developing this scene further. Rate priority based on importance for scene success. Return only the JSON object.`
   }
@@ -750,7 +770,7 @@ Provide 3-5 specific recommendations for developing this scene further. Rate pri
       case 'outline': return <FileText className="h-4 w-4" />
       case 'chapter': return <BookOpen className="h-4 w-4" />
       case 'scene': return <PenTool className="h-4 w-4" />
-      case 'revision': return <Target className="h-4 w-4" />
+      case 'compilation': return <Download className="h-4 w-4" />
     }
   }
 
@@ -763,13 +783,13 @@ Provide 3-5 specific recommendations for developing this scene further. Rate pri
       case 'outline': return 'Story Outline'
       case 'chapter': return 'Chapter Writing'
       case 'scene': return 'Scene Writing'
-      case 'revision': return 'Revision'
+      case 'compilation': return 'Compilation'
     }
   }
 
   // Render phase navigation
   const renderPhaseNav = () => {
-    const phases: StoryPhase[] = ['ideation', 'worldbuilding', 'characters', 'outline', 'chapter', 'scene', 'revision']
+    const phases: StoryPhase[] = ['ideation', 'worldbuilding', 'characters', 'outline', 'chapter', 'scene', 'compilation']
     
     return (
       <div className="flex items-center space-x-1 p-2 bg-muted/30 rounded-lg">
@@ -1040,6 +1060,11 @@ Provide 3-5 specific recommendations for developing this scene further. Rate pri
                   }
                 })
               }}
+            />
+          ) : state.activePhase === 'compilation' ? (
+            <CompilationPhase
+              project={state.activeProject!}
+              onUpdateProject={updateActiveProject}
             />
           ) : state.activePhase === 'ideation' || state.activePhase === 'worldbuilding' || state.activePhase === 'characters' || state.activePhase === 'outline' ? (
             <div className="flex-1 p-6 overflow-auto">
