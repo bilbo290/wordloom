@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
 import MonacoEditor from '@monaco-editor/react'
 import { ScenePlanner } from './ScenePlanner'
@@ -29,7 +30,8 @@ import {
   CheckCircle,
   AlertCircle,
   Plus,
-  Settings
+  Settings,
+  Square
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
@@ -80,6 +82,7 @@ export function SceneWriting({
   const [selectedScenes, setSelectedScenes] = useState<string[]>([]) // Scene IDs for compilation
   const [compilationTitle, setCompilationTitle] = useState('')
   const streamRef = useRef<ReadableStreamDefaultReader<string> | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const editorRef = useRef<any>(null)
 
   // Get active chapter and scene
@@ -692,6 +695,21 @@ export function SceneWriting({
     return instructions.join('\\n')
   }
 
+  // Stop scene generation
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setIsGenerating(false)
+    setIsStreaming(false)
+    
+    toast({
+      title: "Generation stopped",
+      description: "Scene generation has been halted. Current progress has been preserved."
+    })
+  }
+
   // Calculate continuity readiness score for the current scene
   const calculateContinuityScore = (): number => {
     if (!activeScene || !activeChapter) return 50
@@ -883,12 +901,16 @@ TARGET: ${compileElaboration.description}
 Create a seamless compilation that flows naturally from scene to scene:`
       }
 
+      // Create abort controller for cancellation
+      abortControllerRef.current = new AbortController()
+      
       const provider = createAIProvider('lmstudio')
       const model = getModel('lmstudio')
 
       const { textStream } = streamText({
         model: provider(model),
         temperature: 0.7,
+        abortSignal: abortControllerRef.current.signal,
         messages: [
           {
             role: 'system',
@@ -936,9 +958,23 @@ Write only the prose content - no explanations or meta-commentary.`
       })
 
       let accumulatedContent = ''
-      for await (const chunk of textStream) {
-        accumulatedContent += chunk
-        setStreamingContent(accumulatedContent)
+      try {
+        for await (const chunk of textStream) {
+          // Check if generation was aborted
+          if (abortControllerRef.current?.signal.aborted) {
+            break
+          }
+          accumulatedContent += chunk
+          setStreamingContent(accumulatedContent)
+        }
+      } catch (error: any) {
+        // Handle abort error
+        if (error.name === 'AbortError' || abortControllerRef.current?.signal.aborted) {
+          // Keep the current streamed content
+          console.log('Generation aborted, keeping current progress')
+          return // Exit early without applying final content
+        }
+        throw error // Re-throw other errors
       }
 
       // Apply the generated content
@@ -994,6 +1030,7 @@ Write only the prose content - no explanations or meta-commentary.`
       setIsGenerating(false)
       setIsStreaming(false)
       setStreamingContent('')
+      abortControllerRef.current = null
     }
   }
 
@@ -1725,24 +1762,46 @@ ${compiledContent}
               </div>
 
               {/* Generate Button */}
-              <Button
-                onClick={generateSceneContent}
-                disabled={isGenerating}
-                className="w-full bg-primary hover:bg-primary/90"
-              >
-                {isGenerating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Writing Scene...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {writingMode === 'fresh' ? 'Write Scene' : 
-                     writingMode === 'continue' ? 'Continue Scene' : 'Compile & Export'}
-                  </>
+              <div className="flex gap-2">
+                <Button
+                  onClick={generateSceneContent}
+                  disabled={isGenerating}
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Writing Scene...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      {writingMode === 'fresh' ? 'Write Scene' : 
+                       writingMode === 'continue' ? 'Continue Scene' : 'Compile & Export'}
+                    </>
+                  )}
+                </Button>
+                
+                {isStreaming && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={stopGeneration}
+                          variant="destructive"
+                          size="default"
+                          className="px-3"
+                        >
+                          <Square className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Stop generation</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
-              </Button>
+              </div>
             </div>
           </div>
 
@@ -1851,11 +1910,28 @@ ${compiledContent}
                   scrollBeyondLastLine: false
                 }}
               />
-              <div className="absolute top-4 right-4">
+              <div className="absolute top-4 right-4 flex items-center gap-2">
                 <Badge variant="default" className="animate-pulse">
                   <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
                   Writing...
                 </Badge>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={stopGeneration}
+                        variant="destructive"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                      >
+                        <Square className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Stop generation</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
           )}

@@ -47,6 +47,7 @@ interface ChapterWorkspaceProps {
   onSceneSelect: (sceneId: string) => void
   onUpdateChapter: (chapter: ChapterOutline) => void
   onSynthesizeScene?: (scene: SceneOutline) => Promise<void>
+  isGenerating?: boolean
 }
 
 export function ChapterWorkspace({
@@ -56,7 +57,8 @@ export function ChapterWorkspace({
   onChapterSelect,
   onSceneSelect,
   onUpdateChapter,
-  onSynthesizeScene
+  onSynthesizeScene,
+  isGenerating
 }: ChapterWorkspaceProps) {
   const { theme } = useTheme()
   const { toast } = useToast()
@@ -339,6 +341,7 @@ export function ChapterWorkspace({
                     })
                   }}
                   onSynthesizeScene={onSynthesizeScene}
+                  isGenerating={isGenerating}
                 />
               ) : (
                 <div className="h-full flex items-center justify-center p-6">
@@ -409,9 +412,10 @@ export function ChapterWorkspace({
                           variant="outline" 
                           size="sm"
                           onClick={() => onSynthesizeScene?.(activeScene)}
+                          disabled={isGenerating}
                         >
                           <Sparkles className="h-4 w-4 mr-2" />
-                          Re-synthesize
+                          {isGenerating ? 'Synthesizing...' : 'Re-synthesize'}
                         </Button>
                       </div>
                     </CardContent>
@@ -437,9 +441,10 @@ export function ChapterWorkspace({
                           <Button 
                             className="bg-amber-600 hover:bg-amber-700 text-white"
                             onClick={() => onSynthesizeScene?.(activeScene)}
+                            disabled={isGenerating}
                           >
                             <Sparkles className="h-4 w-4 mr-2" />
-                            Synthesize Scene
+                            {isGenerating ? 'Synthesizing...' : 'Synthesize Scene'}
                           </Button>
                         )}
                       </div>

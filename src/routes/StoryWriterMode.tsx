@@ -1040,6 +1040,7 @@ Provide 3-5 specific recommendations for developing this scene further. Rate pri
                 })
               }}
               onSynthesizeScene={synthesizeScene}
+              isGenerating={state.isGenerating}
             />
           ) : state.activePhase === 'scene' ? (
             <SceneWriting

@@ -36,19 +36,24 @@ interface SceneChatProps {
   scene: SceneOutline
   onUpdateScene: (scene: SceneOutline) => void
   onSynthesizeScene?: (scene: SceneOutline) => Promise<void>
+  isGenerating?: boolean
 }
 
 export function SceneChat({
   project,
   scene,
   onUpdateScene,
-  onSynthesizeScene
+  onSynthesizeScene,
+  isGenerating: externalIsGenerating
 }: SceneChatProps) {
   const { toast } = useToast()
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [sceneContext, setSceneContext] = useState<'storyboard' | 'beats' | 'dialogue' | 'visual' | 'pacing'>('storyboard')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Combined loading state for both local and external operations
+  const isBusy = isGenerating || externalIsGenerating
 
   // Get scene-specific chat history
   const messages = scene.chatHistory || []
@@ -288,10 +293,10 @@ Ask ONE focused question at a time to help develop this scene. Be conversational
               size="sm"
               variant="outline"
               onClick={handleSynthesize}
-              disabled={isGenerating}
+              disabled={isBusy}
             >
               <Sparkles className="h-4 w-4 mr-2" />
-              Synthesize
+              {externalIsGenerating ? 'Synthesizing...' : 'Synthesize'}
             </Button>
           )}
         </div>
@@ -452,7 +457,7 @@ Ask ONE focused question at a time to help develop this scene. Be conversational
           />
           <Button
             type="submit"
-            disabled={!input.trim() || isGenerating}
+            disabled={!input.trim() || isBusy}
             className="self-end"
           >
             <Send className="h-4 w-4" />
