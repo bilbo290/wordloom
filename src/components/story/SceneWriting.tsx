@@ -157,11 +157,11 @@ export function SceneWriting({
     })
   }
 
-  // Build comprehensive context from all previous phases
+  // Build comprehensive context with enhanced continuity tracking
   const buildWritingContext = () => {
     const context: string[] = []
 
-    // 1. Story Foundation (Ideation)
+    // 1. Story Foundation (Ideation) - For tone consistency
     if (project.phaseDeliverables?.ideation?.synthesizedIdea) {
       const ideation = project.phaseDeliverables.ideation.synthesizedIdea
       context.push('=== STORY FOUNDATION ===')
@@ -169,11 +169,37 @@ export function SceneWriting({
       context.push(`CENTRAL CONFLICT: ${ideation.centralConflict}`)
       context.push(`THEMES: ${ideation.themes?.join(', ')}`)
       context.push(`TARGET AUDIENCE: ${ideation.targetAudience}`)
+      context.push(`GENRE CONVENTIONS: ${ideation.genreConventions?.join(', ')}`)
       context.push(`UNIQUE ELEMENTS: ${ideation.uniqueElements?.join(', ')}`)
       context.push('')
     }
 
-    // 2. World Context (Worldbuilding)
+    // 2. Writing Style & Voice Analysis
+    const establishedVoice = analyzeEstablishedVoice()
+    if (establishedVoice) {
+      context.push('=== ESTABLISHED WRITING STYLE ===')
+      context.push(`NARRATIVE VOICE: ${establishedVoice.narrativeVoice}`)
+      context.push(`SENTENCE STRUCTURE: ${establishedVoice.sentenceStyle}`)
+      context.push(`DIALOGUE STYLE: ${establishedVoice.dialogueStyle}`)
+      context.push(`PACING: ${establishedVoice.pacing}`)
+      context.push(`TONE KEYWORDS: ${establishedVoice.toneKeywords.join(', ')}`)
+      context.push('')
+    }
+
+    // 3. Chapter Arc & Progression
+    if (activeChapter && activeScene) {
+      const chapterProgression = analyzeChapterProgression()
+      context.push('=== CHAPTER STORY ARC ===')
+      context.push(`Chapter ${activeChapter.number}: ${activeChapter.title}`)
+      context.push(`Chapter Purpose: ${activeChapter.purpose}`)
+      context.push(`Current Scene Position: ${chapterProgression.currentPosition} of ${chapterProgression.totalScenes}`)
+      context.push(`Chapter Arc Stage: ${chapterProgression.arcStage}`)
+      context.push(`Emotional Trajectory: ${chapterProgression.emotionalTrajectory}`)
+      context.push(`Plot Momentum: ${chapterProgression.plotMomentum}`)
+      context.push('')
+    }
+
+    // 4. World Context (Worldbuilding)
     if (project.phaseDeliverables?.worldbuilding?.synthesizedIdea) {
       const world = project.phaseDeliverables.worldbuilding.synthesizedIdea
       context.push('=== WORLD CONTEXT ===')
@@ -188,7 +214,7 @@ export function SceneWriting({
       context.push('')
     }
 
-    // 3. Character Context
+    // 5. Character Context with Relationship Dynamics
     if (project.phaseDeliverables?.characters?.mainCharacters && activeScene) {
       const sceneCharacters = project.phaseDeliverables.characters.mainCharacters.filter(c =>
         activeScene.characters.includes(c.id)
@@ -199,45 +225,47 @@ export function SceneWriting({
           context.push(`${char.name} (${char.role}):`)
           context.push(`- Description: ${char.description}`)
           context.push(`- Motivation: ${char.motivation}`)
-          context.push(`- Arc: ${char.arc}`)
-          context.push(`- Traits: ${char.traits?.join(', ')}`)
+          context.push(`- Current Arc State: ${char.arc}`)
+          context.push(`- Voice/Personality: ${char.traits?.join(', ')}`)
+          if (char.relationships) {
+            context.push(`- Key Relationships: ${char.relationships.map(r => `${r.characterName} (${r.type})`).join(', ')}`)
+          }
           context.push('')
         })
-      }
-    }
 
-    // 4. Chapter Context
-    if (activeChapter) {
-      context.push('=== CHAPTER CONTEXT ===')
-      context.push(`Chapter ${activeChapter.number}: ${activeChapter.title}`)
-      context.push(`Purpose: ${activeChapter.purpose}`)
-      
-      // Previous scenes for continuity
-      if (activeScene) {
-        const sceneIndex = activeChapter.scenes.findIndex(s => s.id === activeScene.id)
-        if (sceneIndex > 0) {
-          context.push('\nPREVIOUS SCENES:')
-          activeChapter.scenes.slice(Math.max(0, sceneIndex - 2), sceneIndex).forEach((prevScene, idx) => {
-            context.push(`Scene ${sceneIndex - 2 + idx + 1}: ${prevScene.title}`)
-            if (prevScene.content) {
-              // Include last paragraph for continuity
-              const paragraphs = prevScene.content.split('\n\n')
-              const lastParagraph = paragraphs[paragraphs.length - 1]
-              context.push(`  Ending: ${lastParagraph.substring(0, 200)}...`)
-            }
+        // Add relationship dynamics for multi-character scenes
+        if (sceneCharacters.length > 1) {
+          context.push('RELATIONSHIP DYNAMICS:')
+          const dynamics = project.phaseDeliverables.characters.relationshipDynamics || []
+          dynamics.forEach(dynamic => {
+            context.push(`- ${dynamic}`)
           })
+          context.push('')
         }
       }
-      context.push('')
     }
 
-    // 5. Current Scene Details
+    // 6. Enhanced Scene Continuity Context
     if (activeScene) {
-      context.push('=== CURRENT SCENE ===')
+      const continuityContext = buildEnhancedContinuityContext()
+      context.push('=== SCENE CONTINUITY CONTEXT ===')
+      context.push(continuityContext)
+      
+      // Add explicit transition instructions
+      const transitionInstructions = buildTransitionInstructions()
+      if (transitionInstructions) {
+        context.push('\\n\\n=== SCENE TRANSITION INSTRUCTIONS ===')
+        context.push(transitionInstructions)
+      }
+    }
+
+    // 7. Current Scene Details
+    if (activeScene) {
+      context.push('=== CURRENT SCENE DETAILS ===')
       context.push(`Scene ${activeScene.number}: ${activeScene.title}`)
       context.push(`Purpose: ${activeScene.purpose}`)
       context.push(`Setting: ${activeScene.setting}`)
-      context.push(`Mood: ${activeScene.mood || 'Not specified'}`)
+      context.push(`Mood/Tone: ${activeScene.mood || 'Not specified'}`)
       
       // Scene Boundaries
       if (activeScene.openingLine || activeScene.synthesisData?.suggestedOpening) {
@@ -250,7 +278,7 @@ export function SceneWriting({
         context.push(activeScene.closingLine || activeScene.synthesisData?.suggestedClosing || 'Not specified')
       }
 
-      // Scene Transitions
+      // Enhanced Scene Transitions
       if (activeScene.previousSceneConnection || activeScene.synthesisData?.transitionFromPrevious) {
         context.push('\nTRANSITION FROM PREVIOUS SCENE:')
         context.push(activeScene.previousSceneConnection || activeScene.synthesisData?.transitionFromPrevious || 'Not specified')
@@ -293,6 +321,436 @@ export function SceneWriting({
     return context.join('\n')
   }
 
+  // Analyze established writing voice from previous scenes
+  const analyzeEstablishedVoice = () => {
+    if (!activeChapter) return null
+
+    const writtenScenes = activeChapter.scenes.filter(s => s.content && s.content.trim().length > 200)
+    if (writtenScenes.length === 0) return null
+
+    // Extract style patterns from existing content
+    const allContent = writtenScenes.map(s => s.content).join('\n\n')
+    const sentences = allContent.split(/[.!?]+/).filter(s => s.trim().length > 10)
+    
+    // Analyze sentence patterns
+    const avgSentenceLength = sentences.reduce((acc, s) => acc + s.split(' ').length, 0) / sentences.length
+    const shortSentences = sentences.filter(s => s.split(' ').length < 10).length
+    const longSentences = sentences.filter(s => s.split(' ').length > 20).length
+    
+    // Determine sentence style
+    let sentenceStyle = 'balanced'
+    if (shortSentences > sentences.length * 0.4) sentenceStyle = 'crisp and punchy'
+    else if (longSentences > sentences.length * 0.3) sentenceStyle = 'flowing and elaborate'
+    
+    // Analyze dialogue patterns
+    const dialogueMatches = allContent.match(/"[^"]*"/g) || []
+    const hasDialogue = dialogueMatches.length > 0
+    
+    let dialogueStyle = 'minimal dialogue'
+    if (hasDialogue) {
+      const avgDialogueLength = dialogueMatches.reduce((acc, d) => acc + d.length, 0) / dialogueMatches.length
+      if (avgDialogueLength < 50) dialogueStyle = 'sharp, concise exchanges'
+      else if (avgDialogueLength > 100) dialogueStyle = 'detailed, expressive conversations'
+      else dialogueStyle = 'natural, conversational tone'
+    }
+    
+    // Determine pacing
+    const actionWords = (allContent.match(/\b(ran|jumped|grabbed|shouted|rushed|burst|slammed)\b/gi) || []).length
+    const contemplativeWords = (allContent.match(/\b(wondered|thought|remembered|considered|reflected)\b/gi) || []).length
+    
+    let pacing = 'moderate'
+    if (actionWords > contemplativeWords * 2) pacing = 'fast-paced with dynamic action'
+    else if (contemplativeWords > actionWords * 2) pacing = 'contemplative and introspective'
+    
+    // Extract tone keywords
+    const toneIndicators = {
+      dark: /\b(shadow|darkness|grim|ominous|foreboding|dread)\b/gi,
+      light: /\b(bright|warm|hope|joy|laughter|sunshine)\b/gi,
+      tense: /\b(tension|anxiety|fear|worry|nervous|edge)\b/gi,
+      mysterious: /\b(mystery|secret|hidden|unknown|strange)\b/gi,
+      emotional: /\b(heart|emotion|feeling|soul|passion|love)\b/gi
+    }
+    
+    const toneKeywords: string[] = []
+    Object.entries(toneIndicators).forEach(([tone, regex]) => {
+      if ((allContent.match(regex) || []).length > 2) {
+        toneKeywords.push(tone)
+      }
+    })
+    
+    // Determine narrative voice
+    let narrativeVoice = project.settings?.perspective || 'third person'
+    if (narrativeVoice === 'third person') {
+      const intimate = (allContent.match(/\b(he felt|she thought|his heart|her mind)\b/gi) || []).length
+      const distant = (allContent.match(/\b(the man|the woman|the figure)\b/gi) || []).length
+      if (intimate > distant) narrativeVoice += ' intimate'
+      else if (distant > intimate) narrativeVoice += ' distant'
+      else narrativeVoice += ' balanced'
+    }
+    
+    return {
+      narrativeVoice,
+      sentenceStyle,
+      dialogueStyle,
+      pacing,
+      toneKeywords
+    }
+  }
+
+  // Analyze chapter progression and story arc position
+  const analyzeChapterProgression = () => {
+    if (!activeChapter || !activeScene) {
+      return {
+        currentPosition: 1,
+        totalScenes: 1,
+        arcStage: 'opening',
+        emotionalTrajectory: 'establishing',
+        plotMomentum: 'building'
+      }
+    }
+
+    const currentSceneIndex = activeChapter.scenes.findIndex(s => s.id === activeScene.id)
+    const totalScenes = activeChapter.scenes.length
+    const progressPercent = (currentSceneIndex + 1) / totalScenes
+    
+    // Determine arc stage based on position
+    let arcStage = 'middle'
+    if (progressPercent <= 0.25) arcStage = 'opening'
+    else if (progressPercent <= 0.75) arcStage = 'development'
+    else arcStage = 'climax/resolution'
+    
+    // Analyze emotional trajectory
+    const writtenScenes = activeChapter.scenes.slice(0, currentSceneIndex + 1).filter(s => s.content)
+    let emotionalTrajectory = 'establishing'
+    
+    if (writtenScenes.length > 1) {
+      const lastScene = writtenScenes[writtenScenes.length - 2]
+      if (lastScene?.mood && activeScene.mood) {
+        const moodTransition = `${lastScene.mood} → ${activeScene.mood}`
+        if (moodTransition.includes('calm') && moodTransition.includes('tense')) {
+          emotionalTrajectory = 'building tension'
+        } else if (moodTransition.includes('tense') && moodTransition.includes('calm')) {
+          emotionalTrajectory = 'releasing tension'
+        } else if (moodTransition.includes('sad') && moodTransition.includes('hope')) {
+          emotionalTrajectory = 'rising hope'
+        } else {
+          emotionalTrajectory = 'developing complexity'
+        }
+      }
+    }
+    
+    // Determine plot momentum based on scene purposes
+    const plotMomentumIndicators = {
+      building: ['introduce', 'establish', 'setup'],
+      accelerating: ['reveal', 'confront', 'challenge'],
+      climactic: ['resolve', 'climax', 'decision'],
+      concluding: ['wrap', 'conclude', 'reflection']
+    }
+    
+    let plotMomentum = 'building'
+    const scenePurpose = activeScene.purpose.toLowerCase()
+    
+    for (const [momentum, keywords] of Object.entries(plotMomentumIndicators)) {
+      if (keywords.some(keyword => scenePurpose.includes(keyword))) {
+        plotMomentum = momentum
+        break
+      }
+    }
+    
+    return {
+      currentPosition: currentSceneIndex + 1,
+      totalScenes,
+      arcStage,
+      emotionalTrajectory,
+      plotMomentum
+    }
+  }
+
+  // Build enhanced continuity context with more comprehensive scene connections
+  const buildEnhancedContinuityContext = () => {
+    if (!activeChapter || !activeScene) return 'No continuity context available.'
+
+    const context: string[] = []
+    const sceneIndex = activeChapter.scenes.findIndex(s => s.id === activeScene.id)
+    
+    // Previous scenes context (expanded to include more scenes and better analysis)
+    if (sceneIndex > 0) {
+      context.push('PREVIOUS SCENES FOR CONTINUITY:')
+      
+      // Include up to 3 previous scenes with different levels of detail
+      const relevantPreviousScenes = activeChapter.scenes.slice(Math.max(0, sceneIndex - 3), sceneIndex)
+      
+      relevantPreviousScenes.forEach((prevScene, idx) => {
+        const sceneNumber = sceneIndex - relevantPreviousScenes.length + idx + 1
+        context.push(`\nScene ${sceneNumber}: ${prevScene.title}`)
+        
+        if (prevScene.content) {
+          const paragraphs = prevScene.content.split('\n\n').filter(p => p.trim())
+          
+          if (idx === relevantPreviousScenes.length - 1) {
+            // Most recent scene - include ending and key emotional state
+            const ending = paragraphs[paragraphs.length - 1]
+            context.push(`  Recent ending: ${ending.substring(0, 300)}${ending.length > 300 ? '...' : ''}`)
+            
+            // Extract emotional state from the ending
+            const emotionalCues = extractEmotionalState(ending)
+            if (emotionalCues.length > 0) {
+              context.push(`  Emotional state: ${emotionalCues.join(', ')}`)
+            }
+            
+            // Check for unresolved elements or cliffhangers
+            const unresolvedElements = extractUnresolvedElements(ending)
+            if (unresolvedElements.length > 0) {
+              context.push(`  Unresolved: ${unresolvedElements.join(', ')}`)
+            }
+          } else {
+            // Earlier scenes - just key outcomes and character states
+            context.push(`  Key outcome: ${prevScene.purpose}`)
+            if (paragraphs.length > 0) {
+              const lastLine = paragraphs[paragraphs.length - 1]
+              context.push(`  Final note: ${lastLine.substring(0, 150)}...`)
+            }
+          }
+        } else {
+          context.push(`  Status: Not yet written (${prevScene.purpose})`)
+        }
+      })
+      
+      context.push('')
+    }
+    
+    // Next scenes context for foreshadowing and setup
+    const nextScenes = activeChapter.scenes.slice(sceneIndex + 1, Math.min(activeChapter.scenes.length, sceneIndex + 3))
+    if (nextScenes.length > 0) {
+      context.push('UPCOMING SCENES (for foreshadowing/setup):')
+      nextScenes.forEach((nextScene, idx) => {
+        context.push(`Scene ${sceneIndex + idx + 2}: ${nextScene.title}`)
+        context.push(`  Purpose: ${nextScene.purpose}`)
+        if (nextScene.mood && nextScene.mood !== activeScene.mood) {
+          context.push(`  Mood shift: ${activeScene.mood || 'current'} → ${nextScene.mood}`)
+        }
+      })
+      context.push('')
+    }
+    
+    // Chapter-level story threads and their current status
+    const chapterThemes = extractChapterThemes()
+    if (chapterThemes.length > 0) {
+      context.push('CHAPTER STORY THREADS:')
+      chapterThemes.forEach(theme => {
+        context.push(`- ${theme}`)
+      })
+      context.push('')
+    }
+    
+    return context.join('\n')
+  }
+
+  // Extract emotional state from text
+  const extractEmotionalState = (text: string): string[] => {
+    const emotions: string[] = []
+    const emotionPatterns = {
+      'tension/anxiety': /\b(tense|anxious|worried|nervous|on edge|uncomfortable)\b/gi,
+      'fear/dread': /\b(afraid|scared|terrified|dread|ominous|foreboding)\b/gi,
+      'anger/frustration': /\b(angry|furious|frustrated|irritated|rage|fury)\b/gi,
+      'sadness/melancholy': /\b(sad|melancholy|sorrowful|grief|despair|mourn)\b/gi,
+      'hope/optimism': /\b(hope|optimistic|bright|promising|uplifting)\b/gi,
+      'confusion/uncertainty': /\b(confused|uncertain|puzzled|bewildered|lost)\b/gi,
+      'determination/resolve': /\b(determined|resolved|firm|decisive|steady)\b/gi
+    }
+    
+    Object.entries(emotionPatterns).forEach(([emotion, pattern]) => {
+      if (pattern.test(text)) {
+        emotions.push(emotion)
+      }
+    })
+    
+    return emotions
+  }
+
+  // Extract unresolved elements that need continuation
+  const extractUnresolvedElements = (text: string): string[] => {
+    const unresolved: string[] = []
+    
+    // Check for questions
+    if (text.includes('?')) {
+      unresolved.push('unanswered questions')
+    }
+    
+    // Check for interruptions or incomplete actions
+    if (text.match(/\b(suddenly|interrupted|cut off|before .* could)\b/gi)) {
+      unresolved.push('interrupted action')
+    }
+    
+    // Check for cliffhanger indicators
+    if (text.match(/\b(but then|however|until|before|just as)\b/gi) && text.trim().endsWith('.')) {
+      unresolved.push('potential cliffhanger')
+    }
+    
+    // Check for mysteries or secrets mentioned
+    if (text.match(/\b(secret|mystery|hidden|unknown|strange|curious)\b/gi)) {
+      unresolved.push('mystery/secret elements')
+    }
+    
+    return unresolved
+  }
+
+  // Extract chapter themes and ongoing story threads
+  const extractChapterThemes = (): string[] => {
+    if (!activeChapter) return []
+    
+    const themes: string[] = []
+    
+    // Analyze chapter purpose for main themes
+    const purpose = activeChapter.purpose.toLowerCase()
+    if (purpose.includes('relationship')) themes.push('Character relationships development')
+    if (purpose.includes('reveal')) themes.push('Mystery/revelation elements')
+    if (purpose.includes('conflict')) themes.push('Central conflict progression')
+    if (purpose.includes('character')) themes.push('Character growth/change')
+    
+    // Analyze scene purposes for recurring themes
+    const scenePurposes = activeChapter.scenes.map(s => s.purpose.toLowerCase()).join(' ')
+    if (scenePurposes.includes('trust') || scenePurposes.includes('betray')) {
+      themes.push('Trust and betrayal dynamics')
+    }
+    if (scenePurposes.includes('past') || scenePurposes.includes('memory')) {
+      themes.push('Past events influencing present')
+    }
+    
+    return themes.length > 0 ? themes : [`Chapter focus: ${activeChapter.purpose}`]
+  }
+
+  // Build explicit transition instructions for scene continuity
+  const buildTransitionInstructions = (): string | null => {
+    if (!activeChapter || !activeScene) return null
+
+    const sceneIndex = activeChapter.scenes.findIndex(s => s.id === activeScene.id)
+    if (sceneIndex === 0) {
+      // First scene in chapter
+      return `This is the FIRST SCENE in the chapter. You may begin with a new setting or continuation from previous chapter, but avoid generic openings like "rain on windows" unless specifically relevant to the story.`
+    }
+
+    // Find the most recent scene with content
+    const previousWrittenScenes = activeChapter.scenes.slice(0, sceneIndex).filter(s => s.content && s.content.trim().length > 100)
+    
+    if (previousWrittenScenes.length === 0) {
+      return `This scene follows unwritten scenes in the chapter. Begin appropriately for the scene's purpose while avoiding generic story openings.`
+    }
+
+    const lastWrittenScene = previousWrittenScenes[previousWrittenScenes.length - 1]
+    const lastParagraphs = lastWrittenScene.content.split('\\n\\n').filter(p => p.trim())
+    const lastParagraph = lastParagraphs[lastParagraphs.length - 1]
+    
+    // Analyze the ending for continuation cues
+    const instructions: string[] = []
+    
+    instructions.push(`CRITICAL: This scene must continue directly from the previous scene's ending state.`)
+    instructions.push(`\\nLast scene ended with: "${lastParagraph.substring(0, 400)}${lastParagraph.length > 400 ? '...' : ''}"`)
+    
+    // Determine the type of transition needed
+    const immediateSceneIndex = activeChapter.scenes.findIndex(s => s.id === lastWrittenScene.id)
+    const sceneGap = sceneIndex - immediateSceneIndex - 1
+    
+    if (sceneGap === 0) {
+      // Immediate continuation
+      instructions.push('\\n🎯 IMMEDIATE CONTINUATION: This scene happens right after the previous scene.')
+      instructions.push('- DO NOT start with generic scene openings (weather, time jumps, etc.)')
+      instructions.push('- Continue from the exact emotional and physical state where the last scene ended')
+      instructions.push('- Maintain the same characters, location, and momentum unless the scene plan specifies otherwise')
+      instructions.push('- If characters were in dialogue, continue the conversation or show immediate reactions')
+      instructions.push('- If action was happening, continue that action or show its immediate aftermath')
+    } else {
+      // Some scenes skipped
+      instructions.push(`\\n⏳ TIME/SCENE TRANSITION: ${sceneGap} scene(s) between this and the last written scene.`)
+      instructions.push('- You may transition in time/location, but connect to the previous scene outcome')
+      instructions.push('- Reference or acknowledge what happened in the previous scene')
+      instructions.push('- Show how characters have been affected by previous events')
+      instructions.push('- Avoid completely disconnected new beginnings')
+    }
+
+    // Check for specific transition guidance
+    if (activeScene.previousSceneConnection) {
+      instructions.push(`\\n📋 PLANNED TRANSITION: ${activeScene.previousSceneConnection}`)
+    }
+
+    // Analyze emotional state for continuity
+    const emotionalCues = extractEmotionalState(lastParagraph)
+    if (emotionalCues.length > 0) {
+      instructions.push(`\\n😊 EMOTIONAL STATE: Previous scene ended with ${emotionalCues.join(', ')}.`)
+      instructions.push('- Honor this emotional state in your opening')
+      instructions.push('- Characters should still be affected by these emotions unless time has passed')
+    }
+
+    // Check for unresolved elements
+    const unresolvedElements = extractUnresolvedElements(lastParagraph)
+    if (unresolvedElements.length > 0) {
+      instructions.push(`\\n❓ UNRESOLVED ELEMENTS: ${unresolvedElements.join(', ')}`)
+      instructions.push('- Address or acknowledge these unresolved elements')
+      instructions.push('- Don\\'t ignore cliffhangers or interrupted actions')
+    }
+
+    return instructions.join('\\n')
+  }
+
+  // Calculate continuity readiness score for the current scene
+  const calculateContinuityScore = (): number => {
+    if (!activeScene || !activeChapter) return 50
+
+    let score = 0
+    let maxScore = 0
+
+    // 1. Previous scene context availability (25 points)
+    maxScore += 25
+    const sceneIndex = activeChapter.scenes.findIndex(s => s.id === activeScene.id)
+    if (sceneIndex > 0) {
+      const previousScenes = activeChapter.scenes.slice(Math.max(0, sceneIndex - 2), sceneIndex)
+      const writtenPrevious = previousScenes.filter(s => s.content && s.content.trim().length > 200)
+      score += Math.min(25, writtenPrevious.length * 12.5) // Up to 2 previous scenes
+    } else {
+      score += 15 // First scene gets partial credit
+    }
+
+    // 2. Scene boundaries and transitions (20 points)
+    maxScore += 20
+    if (activeScene.openingLine || activeScene.synthesisData?.suggestedOpening) score += 5
+    if (activeScene.closingLine || activeScene.synthesisData?.suggestedClosing) score += 5
+    if (activeScene.previousSceneConnection || activeScene.synthesisData?.transitionFromPrevious) score += 5
+    if (activeScene.nextSceneSetup || activeScene.synthesisData?.setupForNext) score += 5
+
+    // 3. Character context and consistency (15 points)
+    maxScore += 15
+    if (project.phaseDeliverables?.characters?.mainCharacters) {
+      const sceneCharacters = project.phaseDeliverables.characters.mainCharacters.filter(c =>
+        activeScene.characters.includes(c.id)
+      )
+      if (sceneCharacters.length > 0) score += 10
+      if (project.phaseDeliverables.characters.relationshipDynamics?.length > 0) score += 5
+    }
+
+    // 4. Story foundation and world context (15 points)
+    maxScore += 15
+    if (project.phaseDeliverables?.ideation?.synthesizedIdea) score += 8
+    if (project.phaseDeliverables?.worldbuilding?.synthesizedIdea) score += 7
+
+    // 5. Beat structure and scene planning (10 points)
+    maxScore += 10
+    if (activeScene.beats && activeScene.beats.length > 0) score += 5
+    if (activeScene.synthesisData || activeScene.beatSequence) score += 5
+
+    // 6. Voice consistency data availability (15 points)
+    maxScore += 15
+    const establishedVoice = analyzeEstablishedVoice()
+    if (establishedVoice) {
+      score += 15 // Full points if we have established voice patterns
+    } else if (sceneIndex === 0) {
+      score += 10 // First scene gets some credit
+    }
+
+    // Convert to percentage and ensure reasonable range
+    const percentage = Math.round((score / maxScore) * 100)
+    return Math.max(30, Math.min(100, percentage)) // Keep between 30-100
+  }
+
   // Generate scene content with AI
   const generateSceneContent = async () => {
     if (!activeScene || isGenerating) return
@@ -306,58 +764,103 @@ export function SceneWriting({
       
       let prompt = ''
       if (writingMode === 'fresh') {
-        prompt = `Write this scene as a complete, engaging prose narrative. Follow the provided scene boundaries and beat placement precisely. Show, don't tell. Use vivid imagery and natural dialogue.
+        prompt = `Write this scene as a complete, engaging prose narrative that maintains perfect continuity with the established story. Follow all structural guidelines while preserving the established voice and advancing the story arc meaningfully.
 
 ${direction ? `USER'S WRITING DIRECTION: ${direction}
-↳ Apply this direction WITHIN the scene structure constraints below.\n\n` : ''}
+↳ Apply this direction while maintaining story continuity and established voice.\n\n` : ''}
 
-SCENE STRUCTURE & CONTEXT:
+COMPREHENSIVE STORY CONTEXT:
 ${contextText}
 
-Write the complete scene in ${project.settings?.tense || 'past'} tense from ${project.settings?.perspective || 'third person'} perspective.
+WRITING REQUIREMENTS:
+- Tense: ${project.settings?.tense || 'past'} tense
+- Perspective: ${project.settings?.perspective || 'third person'} perspective  
+- Target Length: ${currentElaboration.wordCount} words (${currentElaboration.paragraphs} paragraphs)
+- Elaboration Style: ${currentElaboration.description}
 
-ELABORATION LEVEL: ${currentElaboration.label} (${currentElaboration.wordCount} words, ${currentElaboration.paragraphs} paragraphs)
-TARGET: ${currentElaboration.description}
+CRITICAL CONTINUITY REQUIREMENTS (MUST FOLLOW):
+1. VOICE CONSISTENCY: Match the established writing style exactly:
+   - Maintain the same narrative voice, sentence structure, and dialogue patterns
+   - Use the same tone keywords and pacing established in previous scenes
+   - Preserve character voice patterns and relationship dynamics
 
-CRITICAL REQUIREMENTS (MUST FOLLOW):
-- START the scene with the specified opening line/hook (if provided in context)
-- END the scene with the specified closing line/transition (if provided in context)  
-- IMPLEMENT story beats at their designated positions (opening/early/middle/late/closing)
-- MAINTAIN continuity from the previous scene connection (if specified)
-- SET UP elements for the next scene (if specified)
-- Follow the beat placement positions and rationales provided
+2. STORY ARC INTEGRATION:
+   - Understand your position in the chapter arc (see chapter progression above)
+   - Advance the plot momentum appropriately for this story stage  
+   - Maintain emotional trajectory consistency with previous scenes
+
+3. SEAMLESS TRANSITIONS:
+   - BEGIN with smooth continuation from previous scene's ending state
+   - NEVER start with generic openings like "rain on windows", "morning sun", or "time passed" unless specifically relevant
+   - Honor all previous scene emotional states and unresolved elements  
+   - END with appropriate setup for upcoming scenes and mood shifts
+
+4. STRUCTURAL BOUNDARIES:
+   - START with specified opening line/hook (if provided)
+   - END with specified closing line/transition (if provided)
+   - IMPLEMENT story beats at designated positions (opening/early/middle/late/closing)
+   - Follow beat placement rationales provided in context
 
 Scene Structure Guidelines:
-1. Opening (10%): Hook reader, establish immediate situation
-2. Early (20%): Build on opening, introduce key elements
-3. Middle (40%): Main action/conflict/development  
-4. Late (20%): Climax/resolution of scene conflict
-5. Closing (10%): Transition/setup for next scene
+1. Opening (10%): DIRECT continuation from previous scene OR purposeful new beginning (NO generic weather/time transitions)
+2. Early (20%): Build on opening while maintaining established voice and pacing  
+3. Middle (40%): Advance main plot/character development per chapter arc stage
+4. Late (20%): Scene climax/resolution that serves larger story momentum
+5. Closing (10%): Setup for next scene while maintaining emotional trajectory
+
+🚫 AVOID THESE GENERIC OPENINGS:
+- Weather descriptions (rain, sun, wind) unless plot-relevant
+- Time transitions ("Later that day", "The next morning") unless specified
+- Generic setting descriptions that don't connect to previous scene
+- Character waking up or looking out windows unless story-relevant
+
+TONE & STYLE DIRECTIVES:
+- Maintain exact consistency with established writing voice patterns
+- Preserve all character voice distinctions and relationship dynamics
+- Continue established emotional and plot momentum without jarring shifts
+- Use the same level of sensory detail and imagery density as previous scenes
 
 ${direction ? 
-`IMPORTANT: Incorporate the user's writing direction ("${direction}") throughout the scene while respecting the structural boundaries and beat placements above.` : 
-'Write the scene following the structural boundaries and beat placements provided.'}
+`Apply the user's direction ("${direction}") while strictly maintaining all continuity requirements above.` : 
+'Write the scene maintaining perfect story continuity and voice consistency.'}
 
-Write the scene now:`
+Write the complete scene now:`
 
       } else if (writingMode === 'continue') {
         const continueElaboration = getElaborationInfo(elaborationLevel[0])
         const continueWords = Math.ceil(continueElaboration.wordCount * 0.4) // 40% of target for continuation
         
-        prompt = `Continue this scene naturally from where it left off. Follow the remaining story beats and maintain character voice and pacing.
+        prompt = `Continue this scene with perfect voice consistency and natural story flow. Analyze the existing content deeply to match its exact style, pacing, and character voice patterns.
 
-${direction ? `CONTINUATION DIRECTION: ${direction}\n\n` : ''}
+${direction ? `CONTINUATION DIRECTION: ${direction}
+↳ Apply while maintaining perfect consistency with existing content.\n\n` : ''}
 
-CONTEXT:
+COMPREHENSIVE STORY CONTEXT:
 ${contextText}
 
-EXISTING SCENE CONTENT:
+EXISTING SCENE CONTENT TO CONTINUE:
 ${content}
 
-ELABORATION LEVEL: ${continueElaboration.label}
-TARGET: Continue with approximately ${continueWords} words (${continueElaboration.description})
+VOICE MATCHING REQUIREMENTS:
+1. ANALYZE the existing content for:
+   - Sentence structure patterns (length, rhythm, complexity)
+   - Narrative voice intimacy/distance
+   - Dialogue style and character speech patterns
+   - Pacing and paragraph structure
+   - Vocabulary level and tone keywords
+   - Sensory detail density and imagery style
 
-Continue the scene maintaining the established style and voice:`
+2. CONTINUE with:
+   - Identical writing voice and style
+   - Same character voice patterns established above
+   - Natural progression of any ongoing dialogue or action
+   - Consistent emotional state and story momentum
+   - Same level of descriptive detail and pacing
+
+TARGET: Continue with approximately ${continueWords} words (${continueElaboration.description})
+CRITICAL: The continuation must feel like it was written by the same author in the same writing session.
+
+Continue the scene seamlessly:`
 
       } else { // compile
         // Compilation mode - combine multiple scenes
@@ -389,18 +892,42 @@ Create a seamless compilation that flows naturally from scene to scene:`
         messages: [
           {
             role: 'system',
-            content: `You are a skilled fiction writer specializing in ${project.genre} stories. Write engaging, immersive prose that brings scenes to life while following the provided scene structure precisely. Focus on:
-- Natural, character-appropriate dialogue
-- Vivid sensory details and imagery  
-- Strong scene structure and pacing
-- Character development through action and dialogue
-- Maintaining consistent voice and tone
-- Show don't tell storytelling
-- STRICT adherence to provided scene boundaries (opening/closing lines)
-- PRECISE implementation of story beats at their designated positions
-- SMOOTH transitions that connect scene to previous/next scenes
+            content: `You are a masterful fiction writer specializing in ${project.genre} stories with exceptional expertise in maintaining story continuity and consistent voice across scenes. Your primary objectives are:
 
-You must follow the scene boundaries and beat placement instructions exactly as provided. Start and end the scene where specified. Implement each story beat in its designated position (opening/early/middle/late/closing).
+CONTINUITY MASTERY:
+- Analyze the established writing voice and replicate it exactly (sentence structure, rhythm, tone, vocabulary patterns)
+- Maintain seamless story flow by understanding each scene's position in the larger narrative arc
+- Preserve character voice consistency and relationship dynamics established in previous scenes
+- Honor emotional states and unresolved elements from previous scenes
+- CRITICAL: Never start scenes with generic weather, time transitions, or disconnected new beginnings
+
+STORY ARC INTEGRATION:
+- Understand your exact position in the chapter progression (opening/development/climax)
+- Advance plot momentum appropriately for the current story stage
+- Maintain consistent emotional trajectory while allowing natural character development
+- Balance individual scene goals with overall chapter purpose
+
+TECHNICAL EXCELLENCE:
+- Natural, character-appropriate dialogue that matches established speech patterns
+- Vivid sensory details and imagery consistent with previous scene density
+- Show don't tell storytelling with the same sophistication level
+- STRICT adherence to provided scene boundaries (opening/closing lines)
+- PRECISE implementation of story beats at designated positions (opening/early/middle/late/closing)
+- SMOOTH transitions that create seamless reading experience
+- AVOID generic scene openings: NO weather, time jumps, or disconnected descriptions unless plot-essential
+
+VOICE CONSISTENCY PRIORITY:
+Your #1 priority is maintaining perfect consistency with the established writing voice. Every sentence should feel like it was written by the same author who wrote previous scenes. Match:
+- Narrative voice intimacy/distance
+- Sentence length patterns and rhythm
+- Dialogue style and character speech patterns  
+- Pacing and scene structure approach
+- Tone keywords and emotional vocabulary
+- Level of sensory detail and imagery
+
+You must follow ALL structural requirements while making the scene feel like a natural continuation of the established story. 
+
+🎯 CRITICAL RULE: If there are previous scenes, BEGIN this scene by continuing directly from where the story left off. Do not start with weather, time transitions, or scene-setting unless the context explicitly requires it. The reader should feel they are continuing the same story, not starting a new one.
 
 Write only the prose content - no explanations or meta-commentary.`
           },
@@ -479,20 +1006,41 @@ Write only the prose content - no explanations or meta-commentary.`
     try {
       const contextText = buildWritingContext()
       
-      const prompt = `Revise the selected text based on the user's direction. Maintain the story context and character voice while implementing the requested changes.
+      const prompt = `Revise the selected text while maintaining perfect voice consistency and story continuity. The revision must feel seamlessly integrated with the surrounding content.
 
 REVISION DIRECTION: ${revisionDirection}
 
-STORY CONTEXT:
+COMPREHENSIVE STORY CONTEXT:
 ${contextText}
 
-SURROUNDING CONTENT (for context):
+FULL SCENE CONTENT (for voice analysis):
 ${content}
 
 SELECTED TEXT TO REVISE:
 "${selectedText}"
 
-Provide only the revised version of the selected text, maintaining the same general length and style:`
+VOICE CONSISTENCY REQUIREMENTS:
+1. Analyze the surrounding content to understand:
+   - Established narrative voice and intimacy level
+   - Character speech patterns and dialogue style
+   - Sentence structure and rhythm patterns
+   - Vocabulary level and tone keywords
+   - Pacing and descriptive detail density
+
+2. Apply the revision direction while:
+   - Maintaining identical writing voice and style
+   - Preserving character voice consistency
+   - Keeping the same emotional tone and momentum
+   - Using similar sentence structures and vocabulary patterns
+   - Maintaining consistency with the story's established voice
+
+3. Ensure the revised text:
+   - Flows seamlessly with surrounding paragraphs
+   - Matches the sophistication level of adjacent content
+   - Preserves any character development or plot elements
+   - Maintains the same narrative perspective and tense
+
+Provide only the revised text that integrates perfectly with the existing scene voice:`
 
       const provider = createAIProvider('lmstudio')
       const model = getModel('lmstudio')
@@ -569,11 +1117,11 @@ Provide only the revised version of the selected text, maintaining the same gene
       const beforeCursor = content.substring(Math.max(0, cursorPosition - 500), cursorPosition)
       const afterCursor = content.substring(cursorPosition, Math.min(content.length, cursorPosition + 500))
       
-      const prompt = `Add a new paragraph at the current position based on the user's direction. The paragraph should flow naturally with the surrounding text and advance the story.
+      const prompt = `Create a new paragraph that seamlessly integrates with the existing scene while advancing the story. The paragraph must perfectly match the established voice and flow naturally between the surrounding content.
 
 DIRECTION: ${addParagraphDirection}
 
-STORY CONTEXT:
+COMPREHENSIVE STORY CONTEXT:
 ${contextText}
 
 TEXT BEFORE CURSOR:
@@ -582,7 +1130,31 @@ TEXT BEFORE CURSOR:
 TEXT AFTER CURSOR:
 "${afterCursor}"
 
-Write a paragraph (100-200 words) that fits naturally between the before and after text. Follow the established writing style and maintain character voice. Output only the paragraph content:`
+VOICE INTEGRATION REQUIREMENTS:
+1. Analyze the surrounding text for:
+   - Narrative voice patterns and intimacy level
+   - Sentence structure and rhythm established
+   - Character voice consistency (if dialogue involved)
+   - Pacing and paragraph transition style
+   - Vocabulary sophistication and tone keywords
+   - Sensory detail density and imagery style
+
+2. Create a paragraph that:
+   - Matches the exact writing voice and style patterns
+   - Flows naturally from the "before" text to the "after" text
+   - Maintains the same emotional tone and story momentum
+   - Uses consistent vocabulary level and narrative approach
+   - Follows established character voice patterns (if applicable)
+   - Advances the story direction while preserving continuity
+
+3. Ensure seamless integration:
+   - The paragraph should feel like it was always part of the original text
+   - Maintain consistent perspective, tense, and narrative distance
+   - Use similar sentence structures and rhythmic patterns
+   - Preserve the established mood and pacing
+
+Target Length: 100-200 words
+Output only the paragraph content that perfectly bridges the surrounding text:`
 
       const provider = createAIProvider('lmstudio')
       const model = getModel('lmstudio')
@@ -1186,6 +1758,22 @@ ${compiledContent}
                   Boundaries Set
                 </Badge>
               )}
+              {(() => {
+                const continuityScore = calculateContinuityScore()
+                return (
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "text-xs",
+                      continuityScore >= 80 ? "bg-green-500/10 text-green-600 border-green-500/20" :
+                      continuityScore >= 60 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/20" :
+                      "bg-red-500/10 text-red-600 border-red-500/20"
+                    )}
+                  >
+                    Continuity: {continuityScore >= 80 ? 'Strong' : continuityScore >= 60 ? 'Good' : 'Needs Work'}
+                  </Badge>
+                )
+              })()}
             </h4>
             <div className="space-y-3 text-sm">
               {/* Scene Boundaries */}
