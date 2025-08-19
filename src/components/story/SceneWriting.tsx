@@ -689,7 +689,7 @@ export function SceneWriting({
     if (unresolvedElements.length > 0) {
       instructions.push(`\\n❓ UNRESOLVED ELEMENTS: ${unresolvedElements.join(', ')}`)
       instructions.push('- Address or acknowledge these unresolved elements')
-      instructions.push('- Don\\'t ignore cliffhangers or interrupted actions')
+      instructions.push('- Don\'t ignore cliffhangers or interrupted actions')
     }
 
     return instructions.join('\\n')
