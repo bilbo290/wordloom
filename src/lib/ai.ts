@@ -1,6 +1,16 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { ProjectContext, DocumentContext, AIMode, PromptTemplate, SmartContextResult } from './types'
 import { getSmartContextManager } from './smart-context'
+// Import centralized prompts
+import {
+  CORE_SYSTEM_MESSAGE,
+  getTaskInstruction,
+  buildEnhancedSystemMessage,
+  buildEnhancedUserPrompt,
+  buildLegacyUserPrompt,
+  DEFAULT_PROMPT_TEMPLATES,
+  TEST_CONNECTION_SYSTEM_MESSAGE
+} from './prompts'
 import { 
   RefreshCw, 
   Plus, 
@@ -54,10 +64,8 @@ export function getModel(provider: AIProvider = 'lmstudio') {
 export const openai = createAIProvider('lmstudio')
 export const MODEL = getModel('lmstudio')
 
-export const SYSTEM_MESSAGE = `You are a precise writing/editor assistant for any document (blogs, docs, notes, fiction).
-Respect the author's style, POV, tense, and constraints.
-Output ONLY the prose requested — no explanations.
-When asked to continue or write the "next part", write NEW content that comes after the given text. Never repeat or rewrite existing content.`
+// Use centralized system message
+export const SYSTEM_MESSAGE = CORE_SYSTEM_MESSAGE
 
 // Ollama model interface
 export interface OllamaModel {
@@ -114,82 +122,9 @@ export function getModelDisplayInfo(model: OllamaModel) {
   }
 }
 
-// Helper functions for building context sections
-function buildProjectInstructions(projectContext: ProjectContext): string {
-  const instructions = []
-  
-  if (projectContext.genre && projectContext.genre !== 'other') {
-    instructions.push(`Genre: ${projectContext.genre}`)
-  }
-  
-  if (projectContext.style) {
-    instructions.push(`Style: ${projectContext.style}`)
-  }
-  
-  if (projectContext.audience) {
-    instructions.push(`Target audience: ${projectContext.audience}`)
-  }
-  
-  if (projectContext.constraints) {
-    instructions.push(`Constraints: ${projectContext.constraints}`)
-  }
-  
-  return instructions.length > 0 ? instructions.join('\n') : ''
-}
+// All context building functions are now imported from centralized prompts
 
-function buildProjectContextSection(projectContext: ProjectContext): string {
-  const sections = []
-  
-  if (projectContext.description) {
-    sections.push(`PROJECT: ${projectContext.name}\n${projectContext.description}`)
-  } else if (projectContext.name !== 'My Project') {
-    sections.push(`PROJECT: ${projectContext.name}`)
-  }
-  
-  // Add custom fields if any
-  if (projectContext.customFields && Object.keys(projectContext.customFields).length > 0) {
-    const customFields = Object.entries(projectContext.customFields)
-      .map(([key, value]) => `${key}: ${value}`)
-      .join('\n')
-    sections.push(`PROJECT DETAILS:\n${customFields}`)
-  }
-  
-  return sections.length > 0 ? sections.join('\n\n') + '\n\n' : ''
-}
-
-function buildDocumentContextSection(documentContext?: DocumentContext): string {
-  if (!documentContext) return ''
-  
-  const sections = []
-  
-  if (documentContext.purpose) {
-    sections.push(`DOCUMENT PURPOSE: ${documentContext.purpose}`)
-  }
-  
-  if (documentContext.status && documentContext.status !== 'draft') {
-    sections.push(`STATUS: ${documentContext.status}`)
-  }
-  
-  if (documentContext.documentNotes) {
-    sections.push(`DOCUMENT NOTES:\n${documentContext.documentNotes}`)
-  }
-  
-  // Add custom fields if any
-  if (documentContext.customFields && Object.keys(documentContext.customFields).length > 0) {
-    const customFields = Object.entries(documentContext.customFields)
-      .map(([key, value]) => `${key}: ${value}`)
-      .join('\n')
-    sections.push(`DOCUMENT DETAILS:\n${customFields}`)
-  }
-  
-  return sections.length > 0 ? sections.join('\n\n') + '\n\n' : ''
-}
-
-function buildSessionContextSection(sessionContext: string): string {
-  return sessionContext.trim() ? `SESSION NOTES:\n${sessionContext.trim()}\n\n` : ''
-}
-
-// Enhanced prompt building with hierarchical context
+// Enhanced prompt building with hierarchical context (now uses centralized functions)
 export function buildEnhancedPrompt(
   projectContext: ProjectContext,
   documentContext: DocumentContext | undefined,
@@ -201,25 +136,21 @@ export function buildEnhancedPrompt(
   customPrompt?: string
 ): { systemMessage: string; userPrompt: string } {
   
-  // Build enhanced system message
+  // Build enhanced system message using centralized function
   const baseSystem = projectContext.systemPrompt || SYSTEM_MESSAGE
-  const projectInstructions = buildProjectInstructions(projectContext)
-  const systemMessage = projectInstructions 
-    ? `${baseSystem}\n\nPROJECT GUIDELINES:\n${projectInstructions}`
-    : baseSystem
+  const systemMessage = buildEnhancedSystemMessage(baseSystem, projectContext)
   
-  // Build user prompt with layered context
-  const sections = [
-    buildProjectContextSection(projectContext),
-    buildDocumentContextSection(documentContext),
-    buildSessionContextSection(sessionContext),
-    `LEFT CONTEXT:\n${leftContext}`,
-    `SELECTED:\n${selectedText}`,
-    `RIGHT CONTEXT:\n${rightContext}`,
-    `TASK:\n${getTaskInstruction(mode, customPrompt)}`
-  ].filter(section => section.trim() !== '')
-  
-  const userPrompt = sections.join('\n')
+  // Build user prompt with layered context using centralized function
+  const taskInstruction = getTaskInstruction(mode, customPrompt)
+  const userPrompt = buildEnhancedUserPrompt(
+    projectContext,
+    documentContext,
+    sessionContext,
+    leftContext,
+    selectedText,
+    rightContext,
+    taskInstruction
+  )
   
   return { systemMessage, userPrompt }
 }
@@ -342,110 +273,10 @@ TASK:
 ${taskInstruction}`
 }
 
-// Predefined prompt templates
-export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
-  {
-    id: 'continue-story-document',
-    name: 'Continue Story',
-    description: 'Continue the narrative from where the document ends',
-    mode: 'continue',
-    promptText: 'Write the next part of this story that comes after where it currently ends. Do NOT rewrite existing content. Write 150-250 words of new content that advances the plot, develops characters, or enhances the narrative. Maintain consistent voice, POV, and tense.',
-    requiresSelection: false,
-    category: 'writing'
-  },
-  {
-    id: 'continue-story-selection',
-    name: 'Continue Story',
-    description: 'Continue the narrative with natural story progression',
-    mode: 'continue',
-    promptText: 'Write the next part of the story that comes after the selected passage. Do NOT rewrite or repeat the selected text. Write 100-200 words of new content that advances the narrative while maintaining the established voice, characters, and plot direction.',
-    requiresSelection: true,
-    category: 'writing'
-  },
-  {
-    id: 'brainstorm-ideas',
-    name: 'Brainstorm Ideas',
-    description: 'Generate creative ideas for your content',
-    mode: 'ideas',
-    promptText: 'Based on this document, generate 5 creative ideas for how the content could be expanded, improved, or continued. Consider different angles, themes, and approaches.',
-    requiresSelection: false,
-    category: 'brainstorming'
-  },
-  {
-    id: 'character-development',
-    name: 'Develop Characters',
-    description: 'Create character profiles and development ideas',
-    mode: 'custom',
-    promptText: 'Based on the characters mentioned in this text, create detailed character profiles including personality traits, motivations, backstory, and potential character arcs.',
-    requiresSelection: false,
-    category: 'writing'
-  },
-  {
-    id: 'plot-outline',
-    name: 'Create Plot Outline',
-    description: 'Generate a plot structure or outline',
-    mode: 'custom',
-    promptText: 'Create a detailed plot outline based on this content. Include major plot points, character arcs, conflicts, and resolution. Structure it with clear acts or sections.',
-    requiresSelection: false,
-    category: 'writing'
-  },
-  {
-    id: 'tone-analysis',
-    name: 'Analyze Tone & Style',
-    description: 'Analyze the writing style and tone',
-    mode: 'custom',
-    promptText: 'Analyze the tone, writing style, and voice in this text. Identify key stylistic elements, mood, and provide suggestions for maintaining consistency.',
-    requiresSelection: false,
-    category: 'analysis'
-  },
-  {
-    id: 'dialogue-improve',
-    name: 'Improve Dialogue',
-    description: 'Enhance dialogue to sound more natural',
-    mode: 'custom',
-    promptText: 'Improve the dialogue in the SELECTED passage to make it more natural, engaging, and character-specific. Maintain the original meaning while enhancing the conversational flow.',
-    requiresSelection: true,
-    category: 'editing'
-  },
-  {
-    id: 'show-dont-tell',
-    name: 'Show, Don\'t Tell',
-    description: 'Transform exposition into action and dialogue',
-    mode: 'custom',
-    promptText: 'Rewrite the SELECTED passage to show the information through actions, dialogue, and scenes rather than telling it directly. Make it more engaging and immersive.',
-    requiresSelection: true,
-    category: 'writing'
-  },
-  {
-    id: 'add-conflict',
-    name: 'Add Tension',
-    description: 'Increase tension and conflict',
-    mode: 'custom',
-    promptText: 'Enhance the SELECTED passage by adding tension, conflict, or suspense. Create obstacles, complications, or emotional stakes that drive the narrative forward.',
-    requiresSelection: true,
-    category: 'writing'
-  },
-  {
-    id: 'technical-simplify',
-    name: 'Simplify Technical Content',
-    description: 'Make complex content more accessible',
-    mode: 'custom',
-    promptText: 'Simplify the SELECTED technical content to make it more accessible to a general audience. Use clear explanations, analogies, and examples while maintaining accuracy.',
-    requiresSelection: true,
-    category: 'editing'
-  },
-  {
-    id: 'custom-revision',
-    name: 'Custom Revision',
-    description: 'Revise selected text with custom direction',
-    mode: 'custom',
-    promptText: '',  // This will be dynamically filled with user's direction
-    requiresSelection: true,
-    category: 'editing'
-  }
-]
+// Template definitions are now centralized (re-exported for backward compatibility)
+export { DEFAULT_PROMPT_TEMPLATES } from './prompts'
 
-// Function for document-level AI assistance (no selection required)
+// Function for document-level AI assistance (no selection required) - updated to use centralized functions
 export function buildDocumentLevelPrompt(
   projectContext: ProjectContext,
   documentContext: DocumentContext | undefined,
@@ -455,28 +286,26 @@ export function buildDocumentLevelPrompt(
   customPrompt?: string
 ): { systemMessage: string; userPrompt: string } {
   
-  // Build enhanced system message
+  // Build enhanced system message using centralized function
   const baseSystem = projectContext.systemPrompt || SYSTEM_MESSAGE
-  const projectInstructions = buildProjectInstructions(projectContext)
-  const systemMessage = projectInstructions 
-    ? `${baseSystem}\n\nPROJECT GUIDELINES:\n${projectInstructions}`
-    : baseSystem
+  const systemMessage = buildEnhancedSystemMessage(baseSystem, projectContext)
   
   // For document-level tasks, we include the full content as context
-  const sections = [
-    buildProjectContextSection(projectContext),
-    buildDocumentContextSection(documentContext),
-    buildSessionContextSection(sessionContext),
-    `DOCUMENT CONTENT:\n${fullDocumentContent}`,
-    `TASK:\n${getTaskInstruction(mode, customPrompt)}`
-  ].filter(section => section.trim() !== '')
-  
-  const userPrompt = sections.join('\n')
+  const taskInstruction = getTaskInstruction(mode, customPrompt)
+  const userPrompt = buildEnhancedUserPrompt(
+    projectContext,
+    documentContext,
+    sessionContext,
+    '', // no left context
+    fullDocumentContent, // treat full document as "selected"
+    '', // no right context
+    taskInstruction
+  )
   
   return { systemMessage, userPrompt }
 }
 
-// New smart document-level prompt building
+// New smart document-level prompt building (updated to use centralized functions)
 export async function buildSmartDocumentLevelPrompt(
   projectContext: ProjectContext,
   documentContext: DocumentContext | undefined,
@@ -495,12 +324,9 @@ export async function buildSmartDocumentLevelPrompt(
     fullDocumentContent
   )
 
-  // Build enhanced system message
+  // Build enhanced system message using centralized function
   const baseSystem = projectContext.systemPrompt || SYSTEM_MESSAGE
-  const projectInstructions = buildProjectInstructions(projectContext)
-  const systemMessage = projectInstructions 
-    ? `${baseSystem}\n\nPROJECT GUIDELINES:\n${projectInstructions}`
-    : baseSystem
+  const systemMessage = buildEnhancedSystemMessage(baseSystem, projectContext)
   
   // Build user prompt with smart context (using summary instead of full content)
   const sections = [

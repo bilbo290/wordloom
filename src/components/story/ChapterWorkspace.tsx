@@ -361,9 +361,9 @@ export function ChapterWorkspace({
         </div>
 
         {/* Center - Scene Planning */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           {activeScene ? (
-            <div className="flex-1 min-h-0 p-6 overflow-y-auto">
+            <div className="flex-1 min-h-0 p-6 overflow-y-auto enhanced-scrollbar">
               <div className="max-w-4xl mx-auto space-y-6">
                 {/* AI Synthesis Status - Featured */}
                 {activeScene.synthesisData ? (
@@ -388,7 +388,7 @@ export function ChapterWorkspace({
                       {activeScene.synthesisData.recommendations.length > 0 && (
                         <div>
                           <h4 className="font-semibold mb-2">AI Recommendations</h4>
-                          <div className="space-y-2">
+                          <div className="space-y-2 max-h-60 overflow-y-auto enhanced-scrollbar">
                             {activeScene.synthesisData.recommendations.slice(0, 3).map((rec, index) => (
                               <div key={index} className="p-3 bg-background/50 rounded-lg border">
                                 <div className="flex items-center justify-between mb-1">
@@ -467,7 +467,7 @@ export function ChapterWorkspace({
                   </CardHeader>
                   <CardContent>
                     {activeScene.beats.length > 0 ? (
-                      <div className="space-y-3">
+                      <div className="space-y-3 max-h-80 overflow-y-auto enhanced-scrollbar">
                         {activeScene.beats.map((beat, index) => (
                           <div key={beat.id} className="p-3 bg-muted/30 rounded-lg">
                             <div className="flex items-start gap-3">

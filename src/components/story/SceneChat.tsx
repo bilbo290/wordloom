@@ -30,6 +30,12 @@ import type {
 import { generateId } from '@/lib/session'
 import { streamText } from 'ai'
 import { createAIProvider, getModel } from '@/lib/ai'
+import { 
+  buildEnhancedSceneContext, 
+  buildSceneChatSystemMessage,
+  getContextDescription,
+  getActionForContext 
+} from '@/lib/prompts/scene-prompts'
 
 interface SceneChatProps {
   project: StoryProject
@@ -92,6 +98,8 @@ export function SceneChat({
         return "Explore visual and cinematic elements. How should this scene look and feel?"
       case 'pacing':
         return "Examine scene timing and rhythm. How fast or slow should events unfold?"
+      default:
+        return getContextDescription(sceneContext as any) || "General scene development"
     }
   }
 
@@ -133,22 +141,17 @@ export function SceneChat({
     setIsGenerating(true)
 
     try {
-      // Build AI context for scene discussion
-      const sceneContextText = buildSceneContext()
-
-      const systemMessage = `You are a scene development assistant helping craft compelling story scenes. 
-
-You are currently working on: Scene ${scene.number} - "${scene.title}"
-Scene Purpose: ${scene.purpose}
-Setting: ${scene.setting}
-Characters: ${scene.characters.join(', ')}
-
-Current Context Focus: ${sceneContext.toUpperCase()}
-${getContextDescription()}
-
-${sceneContextText}
-
-Ask ONE focused question at a time to help develop this scene. Be conversational and specific. Build on what the user just shared. Keep responses to 1-2 sentences.`
+      // Build enhanced AI context for scene discussion using centralized prompts
+      const sceneContextText = buildEnhancedSceneContext(project, scene)
+      const contextDescription = getContextDescription()
+      
+      // Use centralized scene chat system message
+      const systemMessage = buildSceneChatSystemMessage(
+        scene,
+        sceneContext as any,
+        contextDescription,
+        sceneContextText
+      )
 
       const provider = createAIProvider('lmstudio')
       const model = getModel('lmstudio')
@@ -203,53 +206,6 @@ Ask ONE focused question at a time to help develop this scene. Be conversational
     }
   }
 
-  const buildSceneContext = () => {
-    const context: string[] = []
-
-    // Project context
-    if (project.phaseDeliverables?.ideation?.synthesizedIdea) {
-      const ideation = project.phaseDeliverables.ideation.synthesizedIdea
-      context.push(`STORY PREMISE: ${ideation.corePremise}`)
-      context.push(`CENTRAL CONFLICT: ${ideation.centralConflict}`)
-    }
-
-    // Character context
-    if (project.outline.characters) {
-      const sceneCharacters = project.outline.characters.filter(c =>
-        scene.characters.includes(c.id)
-      )
-      if (sceneCharacters.length > 0) {
-        context.push(`\nSCENE CHARACTERS:`)
-        sceneCharacters.forEach(char => {
-          context.push(`- ${char.name} (${char.role}): ${char.description}`)
-          if (char.motivation) context.push(`  Motivation: ${char.motivation}`)
-        })
-      }
-    }
-
-    // Previous scenes context
-    const chapter = project.outline.chapters.find(ch =>
-      ch.scenes.some(s => s.id === scene.id)
-    )
-    if (chapter) {
-      const sceneIndex = chapter.scenes.findIndex(s => s.id === scene.id)
-      if (sceneIndex > 0) {
-        const previousScene = chapter.scenes[sceneIndex - 1]
-        context.push(`\nPREVIOUS SCENE: ${previousScene.title}`)
-        context.push(`Previous outcome: ${previousScene.outcome || 'Unknown'}`)
-      }
-    }
-
-    // Existing scene elements
-    if (scene.beats.length > 0) {
-      context.push(`\nEXISTING BEATS:`)
-      scene.beats.forEach(beat => {
-        context.push(`- ${beat.description} (${beat.type})`)
-      })
-    }
-
-    return context.join('\n')
-  }
 
   const copyMessage = async (content: string) => {
     try {

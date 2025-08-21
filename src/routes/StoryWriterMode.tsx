@@ -39,6 +39,16 @@ import { generateId } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import { streamText } from 'ai'
 import { createAIProvider, getModel } from '@/lib/ai'
+// Import centralized prompts
+import {
+  buildSynthesisPrompt,
+  buildSceneSynthesisPrompt,
+  buildPreviousPhaseContext,
+  getSynthesisSystemMessage,
+  getSynthesisTemperature,
+  SCENE_SYNTHESIS_SYSTEM_MESSAGE,
+  buildSceneContext
+} from '@/lib/prompts'
 
 
 export function StoryWriterMode() {
@@ -301,8 +311,9 @@ export function StoryWriterMode() {
       .map(msg => `${msg.role}: ${msg.content}`)
       .join('\n\n')
 
-    const sceneContextText = buildSceneContext(scene)
-    const synthesisPrompt = getSceneSynthesisPrompt(scene, conversationText, sceneContextText)
+    const sceneContextText = buildSceneContext(scene, state.activeProject)
+    const previousPhaseContext = buildPreviousPhaseContext(state.activeProject!, 'scene')
+    const synthesisPrompt = buildSceneSynthesisPrompt(scene, conversationText, sceneContextText, previousPhaseContext)
     
     try {
       setState(prev => ({ ...prev, isGenerating: true }))
@@ -312,11 +323,11 @@ export function StoryWriterMode() {
       
       const { text } = await streamText({
         model: provider(model),
-        temperature: 0.3,
+        temperature: getSynthesisTemperature('scene'),
         messages: [
           { 
             role: 'system', 
-            content: 'You are a scene development assistant. Analyze scene conversations and extract structured scene elements with specific recommendations. Always respond with valid JSON only.' 
+            content: SCENE_SYNTHESIS_SYSTEM_MESSAGE
           },
           { role: 'user', content: synthesisPrompt }
         ]
@@ -373,7 +384,8 @@ export function StoryWriterMode() {
       .map(msg => `${msg.role}: ${msg.content}`)
       .join('\n\n')
 
-    const synthesisPrompt = getSynthesisPrompt(phase, conversationText)
+    const previousPhaseContext = buildPreviousPhaseContext(state.activeProject, phase)
+    const synthesisPrompt = buildSynthesisPrompt(phase, conversationText, previousPhaseContext)
     
     try {
       setState(prev => ({ ...prev, isGenerating: true }))
@@ -384,11 +396,11 @@ export function StoryWriterMode() {
       
       const { text } = await streamText({
         model: provider(model),
-        temperature: 0.3,
+        temperature: getSynthesisTemperature(phase),
         messages: [
           { 
             role: 'system', 
-            content: 'You are a story development assistant. Analyze conversations and extract structured story elements with actionable recommendations. Always respond with valid JSON only.' 
+            content: getSynthesisSystemMessage(phase)
           },
           { role: 'user', content: synthesisPrompt }
         ]
@@ -425,332 +437,13 @@ export function StoryWriterMode() {
   }
 
 
-  const getSynthesisPrompt = (phase: StoryPhase, conversation: string) => {
-    const timestamp = Date.now()
-    
-    // Build context from previous phases
-    const previousPhaseContext = buildPreviousPhaseContext(phase)
-    
-    switch (phase) {
-      case 'ideation':
-        return `Analyze this story ideation conversation and synthesize the key elements. Return ONLY valid JSON with this exact structure:
+  // getSynthesisPrompt function is now imported from centralized prompts
 
-{
-  "synthesizedIdea": {
-    "corePremise": "string",
-    "themes": ["theme1", "theme2"],
-    "keyMessages": ["message1", "message2"],
-    "centralConflict": "string",
-    "targetAudience": "string",
-    "genreConventions": ["convention1", "convention2"],
-    "uniqueElements": ["element1", "element2"]
-  },
-  "recommendations": [
-    {
-      "area": "string",
-      "suggestion": "string",
-      "score": number_1_to_10,
-      "priority": "low|medium|high"
-    }
-  ],
-  "synthesizedAt": ${timestamp}
-}
+  // buildPreviousPhaseContext function is now imported from centralized prompts
 
-CONVERSATION:
-${conversation}
+  // buildSceneContext function is now imported from centralized prompts
 
-Analyze the conversation and extract the core story elements. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
-
-      case 'worldbuilding':
-        return `Analyze this world building conversation and synthesize the key elements. Consider the story foundation from previous phases to ensure consistency.
-
-${previousPhaseContext}
-
-Return ONLY valid JSON with this exact structure:
-
-{
-  "synthesizedIdea": {
-    "worldOverview": "string",
-    "settingDetails": ["detail1", "detail2"],
-    "worldRules": ["rule1", "rule2"],
-    "keyLocations": [
-      {
-        "id": "location-id",
-        "name": "Location Name",
-        "description": "description",
-        "significance": "significance"
-      }
-    ],
-    "culturalElements": ["element1", "element2"],
-    "historicalContext": "string"
-  },
-  "recommendations": [
-    {
-      "area": "string",
-      "suggestion": "string",
-      "score": number_1_to_10,
-      "priority": "low|medium|high"
-    }
-  ],
-  "synthesizedAt": ${timestamp}
-}
-
-CONVERSATION:
-${conversation}
-
-Analyze the conversation and extract the world building elements. Ensure the world supports the core premise and themes from the ideation phase. Evaluate how well the world building serves the central conflict. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
-
-      case 'characters':
-        return `Analyze this character development conversation and synthesize the key elements. Consider the story foundation and world from previous phases to ensure character consistency and relevance.
-
-${previousPhaseContext}
-
-Return ONLY valid JSON with this exact structure:
-
-{
-  "mainCharacters": [
-    {
-      "id": "character-id",
-      "name": "Character Name", 
-      "role": "protagonist|antagonist|supporting|minor",
-      "description": "description",
-      "motivation": "motivation",
-      "arc": "character arc",
-      "traits": ["trait1", "trait2"],
-      "backstory": "character background",
-      "relationships": []
-    }
-  ],
-  "relationshipDynamics": ["dynamic1", "dynamic2"],
-  "characterArcs": ["arc1", "arc2"],
-  "voiceNotes": ["note1", "note2"],
-  "recommendations": [
-    {
-      "area": "string",
-      "suggestion": "string", 
-      "score": number_1_to_10,
-      "priority": "low|medium|high"
-    }
-  ],
-  "synthesizedAt": ${timestamp}
-}
-
-CONVERSATION:
-${conversation}
-
-Analyze the conversation and extract character development elements. Ensure characters serve the story premise, fit the world, and drive the central conflict. Evaluate character diversity, motivation clarity, and arc potential. Provide 3-5 specific recommendations. Return only the JSON object.`
-
-      case 'outline':
-        return `Analyze this story outline conversation and synthesize the key narrative structure. Consider the story foundation, world, and characters from previous phases to create a cohesive outline.
-
-${previousPhaseContext}
-
-Return ONLY valid JSON with this exact structure:
-
-{
-  "plotStructure": {
-    "exposition": "string",
-    "incitingIncident": "string", 
-    "risingAction": ["action1", "action2"],
-    "climax": "string",
-    "fallingAction": ["action1", "action2"],
-    "resolution": "string"
-  },
-  "chapterSummaries": ["Chapter 1 summary", "Chapter 2 summary"],
-  "keyPlotPoints": ["plot point 1", "plot point 2"],
-  "pacingNotes": ["pacing note 1", "pacing note 2"],
-  "recommendations": [
-    {
-      "area": "string",
-      "suggestion": "string",
-      "score": number_1_to_10,
-      "priority": "low|medium|high"
-    }
-  ],
-  "synthesizedAt": ${timestamp}
-}
-
-CONVERSATION:
-${conversation}
-
-Analyze the conversation and extract the story structure elements. Ensure the outline serves the characters, world, and central conflict from previous phases. Evaluate plot coherence, pacing, and narrative arc. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
-
-      default:
-        return `Analyze this conversation and extract key insights with actionable recommendations. Consider previous phase outputs for context and consistency.
-
-${previousPhaseContext}
-
-Set synthesizedAt to ${timestamp}.
-
-CONVERSATION:
-${conversation}`
-    }
-  }
-
-  // Helper function to build context from previous phases
-  const buildPreviousPhaseContext = (currentPhase: StoryPhase): string => {
-    if (!state.activeProject?.phaseDeliverables) return ""
-    
-    const context: string[] = []
-    const phases: StoryPhase[] = ['ideation', 'worldbuilding', 'characters', 'outline']
-    const currentIndex = phases.indexOf(currentPhase)
-    
-    // Include all previous completed phases
-    for (let i = 0; i < currentIndex; i++) {
-      const phase = phases[i]
-      const deliverable = state.activeProject.phaseDeliverables[phase]
-      
-      if (deliverable) {
-        context.push(`\n=== ${phase.toUpperCase()} PHASE OUTPUT ===`)
-        
-        switch (phase) {
-          case 'ideation':
-            const ideation = deliverable as any
-            context.push(`Core Premise: ${ideation.synthesizedIdea?.corePremise}`)
-            context.push(`Central Conflict: ${ideation.synthesizedIdea?.centralConflict}`)
-            context.push(`Themes: ${ideation.synthesizedIdea?.themes?.join(', ')}`)
-            context.push(`Unique Elements: ${ideation.synthesizedIdea?.uniqueElements?.join(', ')}`)
-            break
-            
-          case 'worldbuilding':
-            const world = deliverable as any
-            context.push(`World Overview: ${world.synthesizedIdea?.worldOverview}`)
-            context.push(`World Rules: ${world.synthesizedIdea?.worldRules?.join(', ')}`)
-            context.push(`Key Locations: ${world.synthesizedIdea?.keyLocations?.map((l: any) => l.name).join(', ')}`)
-            break
-            
-          case 'characters':
-            const chars = deliverable as any
-            context.push(`Main Characters: ${chars.mainCharacters?.map((c: any) => `${c.name} (${c.role})`).join(', ')}`)
-            context.push(`Character Arcs: ${chars.characterArcs?.join(', ')}`)
-            context.push(`Relationship Dynamics: ${chars.relationshipDynamics?.join(', ')}`)
-            break
-        }
-      }
-    }
-    
-    return context.length > 0 ? `\nPREVIOUS PHASE CONTEXT:\n${context.join('\n')}\n` : ""
-  }
-
-  // Scene synthesis helper functions
-  const buildSceneContext = (scene: import('../lib/story-types').SceneOutline): string => {
-    if (!state.activeProject) return ""
-    
-    const context: string[] = []
-    
-    // Project-level context
-    if (state.activeProject.phaseDeliverables?.ideation?.synthesizedIdea) {
-      const ideation = state.activeProject.phaseDeliverables.ideation.synthesizedIdea
-      context.push(`STORY PREMISE: ${ideation.corePremise}`)
-      context.push(`CENTRAL CONFLICT: ${ideation.centralConflict}`)
-      context.push(`THEMES: ${ideation.themes?.join(', ')}`)
-    }
-
-    // Character context for this scene
-    if (state.activeProject.outline.characters && scene.characters.length > 0) {
-      const sceneCharacters = state.activeProject.outline.characters.filter(c => 
-        scene.characters.includes(c.id)
-      )
-      if (sceneCharacters.length > 0) {
-        context.push(`\nSCENE CHARACTERS:`)
-        sceneCharacters.forEach(char => {
-          context.push(`- ${char.name} (${char.role}): ${char.description}`)
-          if (char.motivation) context.push(`  Motivation: ${char.motivation}`)
-          if (char.arc) context.push(`  Arc: ${char.arc}`)
-        })
-      }
-    }
-
-    // Chapter context
-    const chapter = state.activeProject.outline.chapters.find(ch => 
-      ch.scenes.some(s => s.id === scene.id)
-    )
-    if (chapter) {
-      context.push(`\nCHAPTER CONTEXT:`)
-      context.push(`Chapter ${chapter.number}: ${chapter.title}`)
-      context.push(`Chapter Purpose: ${chapter.purpose}`)
-      
-      // Previous scenes in this chapter
-      const sceneIndex = chapter.scenes.findIndex(s => s.id === scene.id)
-      if (sceneIndex > 0) {
-        context.push(`\nPREVIOUS SCENES:`)
-        chapter.scenes.slice(0, sceneIndex).forEach((prevScene, idx) => {
-          context.push(`Scene ${idx + 1}: ${prevScene.title}`)
-          if (prevScene.outcome) context.push(`  Outcome: ${prevScene.outcome}`)
-        })
-      }
-    }
-
-    return context.join('\n')
-  }
-
-  const getSceneSynthesisPrompt = (scene: import('../lib/story-types').SceneOutline, conversation: string, sceneContext: string): string => {
-    const timestamp = Date.now()
-    
-    return `Analyze this scene development conversation and synthesize the key scene elements. Return ONLY valid JSON with this exact structure:
-
-{
-  "sceneOverview": "string - comprehensive scene description",
-  "keyBeats": ["beat1", "beat2", "beat3"],
-  "characterMoments": [
-    {
-      "characterId": "string",
-      "moment": "string - key character moment/development",
-      "emotionalState": "string - character's emotional state"
-    }
-  ],
-  "visualElements": ["visual1", "visual2"],
-  "dialogueOpportunities": ["dialogue1", "dialogue2"],
-  "tensionProgression": "string - how tension builds/releases",
-  "suggestedOpening": "string - specific opening line or hook for the scene",
-  "suggestedClosing": "string - specific closing line or transition",
-  "transitionFromPrevious": "string - how to connect from previous scene",
-  "setupForNext": "string - what this scene should establish for next scene",
-  "beatPlacement": [
-    {
-      "beatId": "string - matches existing beat IDs",
-      "suggestedPosition": "opening|early|middle|late|closing",
-      "rationale": "string - why this beat should go in this position"
-    }
-  ],
-  "recommendations": [
-    {
-      "area": "string",
-      "suggestion": "string",
-      "priority": "low|medium|high"
-    }
-  ],
-  "synthesizedAt": ${timestamp}
-}
-
-SCENE CONTEXT:
-Scene ${scene.number}: ${scene.title}
-Purpose: ${scene.purpose}
-Setting: ${scene.setting}
-Current Status: ${scene.status}
-
-${sceneContext}
-
-CONVERSATION:
-${conversation}
-
-Analyze the conversation and extract specific scene development elements. Focus on:
-- Visual/cinematic elements that make the scene vivid
-- Character moments and emotional progression
-- Dialogue opportunities and character voice
-- Story beats that advance plot/character
-- Tension building and release patterns
-- Scene pacing and flow
-- Clear scene boundaries (opening hook and closing transition)
-- Connections to previous and next scenes
-- Optimal placement of story beats within the scene structure
-
-For beat placement, analyze each existing story beat and suggest where in the scene structure it should appear (opening/early/middle/late/closing) and explain why that position serves the narrative best.
-
-Provide specific, actionable suggestions for the opening line/hook and closing line/transition. Consider how this scene connects to the overall story flow.
-
-Provide 3-5 specific recommendations for developing this scene further. Rate priority based on importance for scene success. Return only the JSON object.`
-  }
+  // getSceneSynthesisPrompt function is now imported from centralized prompts
 
 
   const moveToNextPhase = (nextPhase: StoryPhase) => {
