@@ -219,6 +219,16 @@ Analyze the conversation and extract character development elements. Ensure char
         resolution: "string"
       },
       chapterSummaries: ["Chapter 1 summary", "Chapter 2 summary", "Chapter 3 summary", "Chapter 4 summary", "Chapter 5 summary"],
+      sceneDetails: [
+        {
+          chapterNumber: 1,
+          sceneNumber: 1,
+          title: "Scene Title",
+          purpose: "Scene purpose/goal",
+          openingLine: "Suggested opening line or hook",
+          closingLine: "Suggested closing line or transition"
+        }
+      ],
       keyPlotPoints: ["plot point 1", "plot point 2"],
       pacingNotes: ["pacing note 1", "pacing note 2"],
       recommendations: [
@@ -247,6 +257,16 @@ Return ONLY valid JSON with this exact structure:
     "resolution": "string"
   },
   "chapterSummaries": ["Chapter 1 summary", "Chapter 2 summary", "Chapter 3 summary", "Chapter 4 summary", "Chapter 5 summary"],
+  "sceneDetails": [
+    {
+      "chapterNumber": 1,
+      "sceneNumber": 1,
+      "title": "Scene Title",
+      "purpose": "Scene purpose/goal",
+      "openingLine": "Suggested opening line or hook",
+      "closingLine": "Suggested closing line or transition"
+    }
+  ],
   "keyPlotPoints": ["plot point 1", "plot point 2"],
   "pacingNotes": ["pacing note 1", "pacing note 2"],
   "recommendations": [
@@ -266,6 +286,16 @@ CONVERSATION:
 Analyze the conversation and extract the story structure elements. Ensure the outline serves the characters, world, and central conflict from previous phases. 
 
 IMPORTANT: Generate an appropriate number of chapters based on the story content and scope discussed. Most stories need 8-15 chapters, but adjust based on the complexity and target length mentioned. Do not limit yourself to just 2 chapters - provide a full chapter breakdown that covers the complete story arc.
+
+SCENE DETAILS: For each major scene discussed in the conversation, create a sceneDetails entry with:
+- chapterNumber: Which chapter this scene belongs to (1, 2, 3, etc.)
+- sceneNumber: Scene number within that chapter (1, 2, 3, etc.)
+- title: Descriptive scene title based on its purpose
+- purpose: What this scene accomplishes for the story (plot advancement, character development, etc.)
+- openingLine: A compelling opening line or hook that establishes the scene (not generic weather/time descriptions)
+- closingLine: A transition line that sets up the next scene or provides closure
+
+Focus on creating 2-4 scenes per chapter with strong opening hooks and smooth transitions. Opening lines should be specific to the story and characters, avoiding generic starts like "The sun rose" or "It was a dark night."
 
 Evaluate plot coherence, pacing, and narrative arc. Provide 3-5 specific recommendations for areas that need development. Rate each area from 1-10 based on how well-developed it is. Return only the JSON object.`
   },

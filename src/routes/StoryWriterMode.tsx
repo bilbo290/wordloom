@@ -338,11 +338,25 @@ export function StoryWriterMode() {
       const cleanedText = fullText.replace(/```json\n?|\n?```/g, '').trim()
       const sceneSynthesis = JSON.parse(cleanedText)
       
+      // Convert plotBeats from synthesis to scene beats
+      const synthesizedBeats = sceneSynthesis.sceneElements?.plotBeats?.map((beatDesc: string, index: number) => ({
+        id: generateId(),
+        description: beatDesc,
+        type: 'plot' as const,
+        order: index + 1,
+        completed: false
+      })) || []
+      
       // Find and update the scene in the project
       const updatedChapters = state.activeProject.outline.chapters.map(chapter => {
         const updatedScenes = chapter.scenes.map(s => 
           s.id === scene.id 
-            ? { ...s, synthesisData: sceneSynthesis, status: 'outlined' as const }
+            ? { 
+                ...s, 
+                synthesisData: sceneSynthesis, 
+                beats: synthesizedBeats.length > 0 ? synthesizedBeats : s.beats,
+                status: 'outlined' as const 
+              }
             : s
         )
         return { ...chapter, scenes: updatedScenes }
@@ -412,12 +426,43 @@ export function StoryWriterMode() {
       const synthesizedOutput = JSON.parse(cleanedText)
       
       // Update project with synthesized output
-      updateActiveProject({
+      let projectUpdate: any = {
         phaseDeliverables: {
           ...state.activeProject.phaseDeliverables,
           [phase]: synthesizedOutput
         }
-      })
+      }
+
+      // Special handling for outline phase - apply scene details to actual scenes
+      if (phase === 'outline' && synthesizedOutput.sceneDetails && Array.isArray(synthesizedOutput.sceneDetails)) {
+        const updatedChapters = state.activeProject.outline.chapters.map(chapter => {
+          const updatedScenes = chapter.scenes.map(scene => {
+            // Find matching scene detail by chapter/scene number
+            const sceneDetail = synthesizedOutput.sceneDetails.find((detail: any) => 
+              detail.chapterNumber === chapter.number && detail.sceneNumber === scene.number
+            )
+            
+            if (sceneDetail) {
+              return {
+                ...scene,
+                title: sceneDetail.title || scene.title,
+                purpose: sceneDetail.purpose,
+                openingLine: sceneDetail.openingLine,
+                closingLine: sceneDetail.closingLine
+              }
+            }
+            return scene
+          })
+          return { ...chapter, scenes: updatedScenes }
+        })
+
+        projectUpdate.outline = {
+          ...state.activeProject.outline,
+          chapters: updatedChapters
+        }
+      }
+
+      updateActiveProject(projectUpdate)
 
       toast({
         title: "Phase synthesized",
